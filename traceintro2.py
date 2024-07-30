@@ -86,7 +86,6 @@ class Tracer():
         return line, multilines
 
     def singleSpace(self, force=False):
-        # if self.output[-1] != "\n":
         if force and self.output[-1] != "\n":
             self.output.append("\n")
             self.spaced = True
@@ -112,7 +111,7 @@ class Tracer():
         self.singleSpace(force = True)
         for p in parents[::-1]:
             lines = self.getFullParent(*p.split(":"))
-            for line in lines: self.output.append(f"{'  ' * self.indent}{line}")
+            for line in lines: self.output.append(f"{p.split(':')[0].split('tinygrad/')[-1]:30}:{int(p.split(':')[1]):6}:  {'  ' * self.indent}{line}")
         self.spaced = False
         self.parentsIntroduced = True
         
@@ -178,7 +177,7 @@ class Tracer():
                                     "lines": []
                                 }
                         if filename == script_path:
-                            self.output += [line, *multilines]
+                            self.output += [f"{filename_short:30}:{lineno:6}:  {ln}" for ln in [line, *multilines]]
                             self.spaced = False
                         if not any([
                             line.strip().startswith("@"),
@@ -193,10 +192,10 @@ class Tracer():
                                             self.introduceParents()
                                     else:
                                         self.introduceParents()
-                                        for ln in [line, *multilines]: self.output.append(f"{'  ' * self.indent}{ln}")
+                                        for ln in [line, *multilines]: self.output.append(f"{filename_short:30}:{lineno:6}:  {'  ' * self.indent}{ln}")
                                         self.spaced = False
                             elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
-                                self.output += [line, *multilines]
+                                self.output += [f"{filename_short:30}:{lineno:6}:  {ln}" for ln in [line, *multilines]]
 
 
         return self.trace_dispatch
