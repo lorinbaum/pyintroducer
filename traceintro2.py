@@ -2,18 +2,18 @@ import sys
 import linecache
 import re
 import runpy
-import traceback
-from typing import List, Tuple, Dict, Set, Union
-from tokenize import tokenize, TokenError
+from typing import List, Dict, Union
+from tokenize import tokenize, TokenError# , IndentationError
 from io import BytesIO
 
-# TODO: multiline statements
-"""
-get the full line into multilines. make a special output to add corrent indent to the multiline lines:
-self.output += [" " * self.indent + line for line in multiline]
-call events will be returned after each line if there are any
-to avoid printing the line, the next line event with filename+lineno of secondary lines should be ignored
-"""
+# TODO: dictionary definitions print content first, then the variable, which reprints the dictionary because multiline
+# TODO: print existing class definition when redefining it
+# TODO: its printing whole classes for some reason
+# TODO: don't reintroduce just introduced parents
+# TODO: don't print empty class declarations
+# TODO: program runs absurdly slow. patternmatcher very slow. keeps calling the same functions (?)
+
+# errors = set()
 
 class Tracer():
     def __init__(self, output_path):
@@ -24,9 +24,14 @@ class Tracer():
         # Dict[filename:linenumber : str : Dict[parents: List[filename:linenumber : str], lines: List[line : str]]
         self.lexicon = {}
         # stores all executed lines to avoid duplication
-        self.lines:Dict[str: Set[int]] = {}
+        # new! stores all printed lines, not executed ones
+        self.lines:Dict[str:List[int]] = {}
+        # stores lines that are part of multilines that should be ignored in all cases
+        self.skipmultilines:Dict[str:List[int]] = {}
         # stores current filename:lineno on a call event (def or class statement), so following lines can find their parents easily
         self.parents = []
+        # stores parents of the current line when tracing through line events, so that encountered functions and classes can get them assigned
+        self.prospectiveParents:List[Dict[str:str, str:int]] = []
         self.parentsIntroduced = False
 
         self.indent = 0
@@ -47,7 +52,7 @@ class Tracer():
             try:
                 list(tokenize(BytesIO(lines.encode("utf-8")).readline))
             except TokenError as e:
-                if str(e).startswith("('EOF in multi-line statement"):
+                if str(e).startswith("('EOF in multi-line "):
                     lines += linecache.getline(filename, lineno + i)
                     i += 1
                     continue
@@ -66,10 +71,15 @@ class Tracer():
         i = 2
         magiclines = 0
         while count:
-            try:
+            try:   
+                # print("new docstring")
+                # print(f"lines when receding through {filename}:{lineno}:{count=}: {lines}")
                 list(tokenize(BytesIO(lines.encode("utf-8")).readline))
             except TokenError as e:
-                if str(e).startswith("('EOF in multi-line statement"):
+                # if e not in errors:
+                #     print(e)
+                #     errors.add(e)
+                if str(e).startswith("('EOF in multi-line "):
                     # if it finds a line with explicit line joining at the end, but the next line is not in lines (it was judges as ok),
                     # it should take that next and see if it tokenizes, error if not
                     if lines.endswith("\\\n") and (nextln := linecache.getline(filename, lineno + magiclines)) not in lines:
@@ -77,6 +87,12 @@ class Tracer():
                         lines = lines + nextln
                         magiclines += 1
                         continue
+                    lines = linecache.getline(filename, lineno - i) + lines
+                    i += 1
+                    continue
+            except IndentationError as e:
+                # ignore indentation errors when inside docstrings
+                if lines.strip().endswith('"""') or lines.strip().endswith("'''"):
                     lines = linecache.getline(filename, lineno - i) + lines
                     i += 1
                     continue
@@ -118,20 +134,27 @@ class Tracer():
         if not isinstance(lines, list): lines = [lines]
         for ln in lines:
             self.output_file.write(f"{filename_short:20}:{lineno:6}:  {'  ' * self.indent}{ln}")
+        self.lines[filename].append(lineno)
         self.trueSpaced = False
 
     def trace_dispatch(self, frame, event, arg):
         filename = frame.f_code.co_filename
         lineno = frame.f_lineno
         if "python3" not in filename:
-            if filename not in self.lines: self.lines[filename] = set()
+            if filename not in self.lines: self.lines[filename] = []
+            if filename not in self.skipmultilines: self.skipmultilines[filename] = []
             # call events need to go through to let later lines know where they come from
             # same for return events
-            if lineno not in self.lines[filename] or event!="line" or self.parents:
+            # if lineno not in self.lines[filename] or event!="line":
+            if lineno not in self.skipmultilines[filename]:
                 line, multilines = self.advance(filename, lineno, 0)
-                if event == "line":
-                    for i in range(len(multilines) + 1):
-                        self.lines[filename].add(lineno+i)
+                # print([line, *multilines])
+                # if event == "line":
+                    # for i in range(len(multilines) + 1):
+                for i in range(len(multilines)):
+                    # self.lines[filename].add(lineno+i)
+                    self.skipmultilines[filename].append(lineno+i+1)
+                    # print(f"added line {filename}{lineno + i} to visited ones")
                 if line.strip() != "":
                     filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
                     print(f"{filename_short:40}:{lineno:6}", end="\r")
@@ -164,44 +187,57 @@ class Tracer():
                         """
                         consider the line only if it is not multiline or first line in multiline statement
                         """
-                        if line.strip().startswith("def ") or line.strip().startswith("class "):
-                            if (key :=f"{filename}:{lineno}") not in self.lexicon:
-                                parents = [] # higher indices = more distant parent
+                        if lineno not in self.lines[filename]:
+                            if line.strip().startswith("def ") or line.strip().startswith("class "):
                                 indent = len(whitespace) if (whitespace:=re.search("^(\s*)", line)[1]) else 0
-                                newlineno = lineno
-                                while indent > 0:
-                                    # newline = linecache.getline(filename, lineno - i)
-                                    newline, newmultilines = self.recede(filename, newlineno, 1)
-                                    newlineno = newlineno - 1 - len(newmultilines)
-                                    if newline.strip() != "":
-                                        newIndent = len(whitespace) if (whitespace:=re.search("^(\s*)", newline)[1]) else 0
-                                        if newIndent < indent:
-                                            parents.append(f"{filename}:{newlineno}")
-                                            indent = newIndent
-                                self.lexicon[key] = {
-                                    "parents": parents,
-                                    "lines": []
-                                }
-                        if filename == script_path:
-                            self.write(filename, lineno, [line, *multilines])
-                            self.spaced = False
-                        if not any([
-                            line.strip().startswith("@"),
-                            line.strip().startswith("from "),
-                            line.strip().startswith("import ")
-                        ]):
-                            if len(self.parents):
-                                if lineno not in self.lexicon[self.parents[-1]]["lines"]:
-                                    self.lexicon[self.parents[-1]]["lines"].append(lineno)
-                                    if line.strip().startswith("def ") or line.strip().startswith("class "):
-                                        if f"{filename}:{lineno}" == self.parents[-1]:
-                                            self.introduceParents()
+                                if indent == 0: self.prospectiveParents = [{"name": f"{filename}:{lineno}", "indent": 0}]
+                                else:
+                                    if indent > (prevIndent:=self.prospectiveParents[-1]["indent"]):
+                                        self.prospectiveParents.append({"name": f"{filename}:{lineno}", "indent": indent})
+                                    elif indent == prevIndent:
+                                        self.prospectiveParents[-1] = {"name": f"{filename}:{lineno}", "indent": indent}
                                     else:
-                                        self.introduceParents()
-                                        self.write(filename, lineno, [line, *multilines])
-                                        self.spaced = False
-                            elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
+                                        while self.prospectiveParents[-1]["indent"] != indent:
+                                            self.prospectiveParents.pop()
+                                        self.prospectiveParents[-1] = {"name": f"{filename}:{lineno}", "indent": indent}
+                                if (key :=f"{filename}:{lineno}") not in self.lexicon: self.lexicon[key] = {"parents": [p["name"] for p in self.prospectiveParents[:-1]], "lines": []}
+                                # if (key :=f"{filename}:{lineno}") not in self.lexicon:
+                                #     parents = [] # higher indices = more distant parent
+                                #     indent = len(whitespace) if (whitespace:=re.search("^(\s*)", line)[1]) else 0
+                                #     newlineno = lineno
+                                #     while indent > 0:
+                                #         # newline = linecache.getline(filename, lineno - i)
+                                #         newline, newmultilines = self.recede(filename, newlineno, 1)
+                                #         newlineno = newlineno - 1 - len(newmultilines)
+                                #         if newline.strip() != "":
+                                #             newIndent = len(whitespace) if (whitespace:=re.search("^(\s*)", newline)[1]) else 0
+                                #             if newIndent < indent:
+                                #                 parents.append(f"{filename}:{newlineno}")
+                                #                 indent = newIndent
+                                #     self.lexicon[key] = {
+                                #         "parents": parents,
+                                #         "lines": []
+                                #     }
+                            if filename == script_path:
                                 self.write(filename, lineno, [line, *multilines])
+                                self.spaced = False
+                            if not any([
+                                line.strip().startswith("@"),
+                                line.strip().startswith("from "),
+                                line.strip().startswith("import ")
+                            ]):
+                                if len(self.parents):
+                                    if lineno not in self.lexicon[self.parents[-1]]["lines"]:
+                                        self.lexicon[self.parents[-1]]["lines"].append(lineno)
+                                        if line.strip().startswith("def ") or line.strip().startswith("class "):
+                                            if f"{filename}:{lineno}" == self.parents[-1]:
+                                                self.introduceParents()
+                                        else:
+                                            self.introduceParents()
+                                            self.write(filename, lineno, [line, *multilines])
+                                            self.spaced = False
+                                elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
+                                    self.write(filename, lineno, [line, *multilines])
 
 
         return self.trace_dispatch
