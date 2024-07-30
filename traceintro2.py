@@ -3,7 +3,7 @@ import linecache
 import re
 import runpy
 import traceback
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Set
 from tokenize import tokenize, TokenError
 from io import BytesIO
 
@@ -18,12 +18,14 @@ to avoid printing the line, the next line event with filename+lineno of secondar
 class Tracer():
     def __init__(self):
         self.output = []
-        self.prev_filename = None
         
         # stores function and classes. linenumber is where def or class statement is.
         # keep in mind a call event will first go to the decorator if there is one
         # Dict[filename:linenumber : str : Dict[parents: List[filename:linenumber : str], lines: List[line : str]]
         self.lexicon = {}
+        # stores all executed lines to avoid duplication
+        self.lines:Dict[str: Set[int]] = {}
+        # stores current filename:lineno on a call event (def or class statement), so following lines can find their parents easily
         self.parents = []
         self.parentsIntroduced = False
 
@@ -31,8 +33,6 @@ class Tracer():
 
         self.spaced = True # beginning of line
 
-        # for lines that were read in advance because they are parts of multi-line statements, that should not be printed again
-        self.skiplineevents = []
 
     def advance(self, filename, lineno, count):
         """
@@ -67,10 +67,8 @@ class Tracer():
         magiclines = 0
         while count:
             try:
-                # print(filename, lineno, repr(lines))
                 list(tokenize(BytesIO(lines.encode("utf-8")).readline))
             except TokenError as e:
-                # print("fails to tokenize")
                 if str(e).startswith("('EOF in multi-line statement"):
                     # if it finds a line with explicit line joining at the end, but the next line is not in lines (it was judges as ok),
                     # it should take that next and see if it tokenizes, error if not
@@ -79,11 +77,6 @@ class Tracer():
                         lines = lines + nextln
                         magiclines += 1
                         continue
-                        # try:
-                        #     list(tokenize(BytesIO(lines.encode("utf-8")).readline))
-                        # except e:
-                        #     raise e
-                        # break
                     lines = linecache.getline(filename, lineno - i) + lines
                     i += 1
                     continue
@@ -105,7 +98,6 @@ class Tracer():
         lineno = int(lineno)
         line, multilines = self.advance(filename, lineno, 0)
         fullParent = [line, *multilines][::-1]
-        # while any([(line := linecache.getline(filename, lineno - i)).strip().startswith("@"), line.strip().startswith("#")]):
         line, multilines = self.recede(filename, lineno, 1)
         newlineno = lineno
         while any([line.strip().startswith("@"), line.strip().startswith("#")]):
@@ -128,17 +120,16 @@ class Tracer():
         filename = frame.f_code.co_filename
         lineno = frame.f_lineno
         if "python3" not in filename:
-            # line, multilines = self.getFullLine(filename, lineno)
-            if (id:=f"{filename}:{lineno}") in self.skiplineevents:
-                # print("found in skiplineevents")
-                self.skiplineevents.pop(self.skiplineevents.index(id))
-            else:
+            if filename not in self.lines: self.lines[filename] = set()
+            # call events need to go through to let later lines know where they come from
+            # same for return events
+            if lineno not in self.lines[filename] or event!="line":
                 line, multilines = self.advance(filename, lineno, 0)
+                for i in range(len(multilines) + 1):
+                    self.lines[filename].add(lineno+i)
                 if line.strip() != "":
                     filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
-                    if filename != self.prev_filename:
-                        self.output.append(f"# {filename_short}\n")
-                        self.prev_filename = filename
+                    print(f"{filename_short:40}:{lineno:6}", end="\r")
                     if event == "call":
                         if not any([
                             line.strip().startswith("from "),
@@ -157,22 +148,17 @@ class Tracer():
                                 self.parentsIntroduced = False
                                 self.parents.append(f"{filename}:{lineno}")
                                 self.indent += 1
-                                # print(f"calling {filename}:{lineno}, increase indent to: {self.indent}")
                     elif event == "return":
                         # some calls are not the ones I want, like import lines (or comments!?) which aren't considered for parents
                         # the returns that weren't accounted for happen at end of lines and self.parents will be empty
                         if len(self.parents):
-                            # self.indent -= len(self.lexicon[self.parents[-1]]["parents"]) + 1
                             self.indent = max(self.indent - 1, 0)
                             self.parents.pop()
-                            # print(f"indent after return: {self.indent}")
                         self.singleSpace()
                     elif event == "line" and line.strip() != "":
                         """
                         consider the line only if it is not multiline or first line in multiline statement
                         """
-                        self.skiplineevents += [f"{filename}:{lineno + i + 1}" for i in range(len(multilines))]
-                        # print(self.skiplineevents)
                         if line.strip().startswith("def ") or line.strip().startswith("class "):
                             if (key :=f"{filename}:{lineno}") not in self.lexicon:
                                 parents = [] # higher indices = more distant parent
@@ -227,6 +213,7 @@ sys.settrace(None)
 
 output_path = f"{script_path}_trace2.txt"
 
-print(f"writing to {output_path}")
+# print("")
+print(f"writing to {output_path:40}")
 with open(output_path, "w") as output_file:
     output_file.write("".join(tracer.output))
