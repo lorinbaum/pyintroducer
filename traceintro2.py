@@ -3,7 +3,7 @@ import linecache
 import re
 import runpy
 import traceback
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Union
 from tokenize import tokenize, TokenError
 from io import BytesIO
 
@@ -16,8 +16,8 @@ to avoid printing the line, the next line event with filename+lineno of secondar
 """
 
 class Tracer():
-    def __init__(self):
-        self.output = []
+    def __init__(self, output_path):
+        self.output_file = open(output_path, "w")
         
         # stores function and classes. linenumber is where def or class statement is.
         # keep in mind a call event will first go to the decorator if there is one
@@ -86,12 +86,9 @@ class Tracer():
         return line, multilines
 
     def singleSpace(self, force=False):
-        if force and self.output[-1] != "\n":
-            self.output.append("\n")
-            self.spaced = True
-        elif not self.spaced:
-            self.output.append("\n")
-            self.spaced = True
+        if force and not self.trueSpaced or not self.spaced: self.output_file.write("\n")
+        self.spaced = True
+        self.trueSpaced = True
 
     def getFullParent(self, filename:str, lineno:str) -> List[str]:
         lineno = int(lineno)
@@ -111,10 +108,18 @@ class Tracer():
         self.singleSpace(force = True)
         for p in parents[::-1]:
             lines = self.getFullParent(*p.split(":"))
-            for line in lines: self.output.append(f"{p.split(':')[0].split('tinygrad/')[-1]:30}:{int(p.split(':')[1]):6}:  {'  ' * self.indent}{line}")
+            self.write(p.split(":")[0], int(p.split(":")[1]), lines)
         self.spaced = False
         self.parentsIntroduced = True
-        
+
+    def write(self, filename:str, lineno:int, lines:Union[str, List[str]]):
+        filename_short = filename.split("tinygrad/")[-1]
+        if len(filename_short) > 20: filename_short = f"...{filename_short[-17:]}"
+        if not isinstance(lines, list): lines = [lines]
+        for ln in lines:
+            self.output_file.write(f"{filename_short:20}:{lineno:6}:  {'  ' * self.indent}{ln}")
+        self.trueSpaced = False
+
     def trace_dispatch(self, frame, event, arg):
         filename = frame.f_code.co_filename
         lineno = frame.f_lineno
@@ -122,10 +127,11 @@ class Tracer():
             if filename not in self.lines: self.lines[filename] = set()
             # call events need to go through to let later lines know where they come from
             # same for return events
-            if lineno not in self.lines[filename] or event!="line":
+            if lineno not in self.lines[filename] or event!="line" or self.parents:
                 line, multilines = self.advance(filename, lineno, 0)
-                for i in range(len(multilines) + 1):
-                    self.lines[filename].add(lineno+i)
+                if event == "line":
+                    for i in range(len(multilines) + 1):
+                        self.lines[filename].add(lineno+i)
                 if line.strip() != "":
                     filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
                     print(f"{filename_short:40}:{lineno:6}", end="\r")
@@ -177,7 +183,7 @@ class Tracer():
                                     "lines": []
                                 }
                         if filename == script_path:
-                            self.output += [f"{filename_short:30}:{lineno:6}:  {ln}" for ln in [line, *multilines]]
+                            self.write(filename, lineno, [line, *multilines])
                             self.spaced = False
                         if not any([
                             line.strip().startswith("@"),
@@ -192,27 +198,22 @@ class Tracer():
                                             self.introduceParents()
                                     else:
                                         self.introduceParents()
-                                        for ln in [line, *multilines]: self.output.append(f"{filename_short:30}:{lineno:6}:  {'  ' * self.indent}{ln}")
+                                        self.write(filename, lineno, [line, *multilines])
                                         self.spaced = False
                             elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
-                                self.output += [f"{filename_short:30}:{lineno:6}:  {ln}" for ln in [line, *multilines]]
+                                self.write(filename, lineno, [line, *multilines])
 
 
         return self.trace_dispatch
 
 # script_path = sys.argv[1]
 script_path = "test.py"
-tracer = Tracer()
-with open(script_path, "r") as script_file:
-    script = script_file.read()
+output_path = f"{script_path}_trace2.txt"
+tracer = Tracer(output_path)
 
 sys.settrace(tracer.trace_dispatch)
 runpy.run_path(script_path, run_name="__main__")
 sys.settrace(None)
 
-output_path = f"{script_path}_trace2.txt"
-
-# print("")
-print(f"writing to {output_path:40}")
-with open(output_path, "w") as output_file:
-    output_file.write("".join(tracer.output))
+tracer.output_file.close()
+print(f"introduction written to {output_path:30}")
