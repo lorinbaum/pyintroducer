@@ -1,2 +1,3 @@
 from tinygrad.tensor import Tensor
-# Tensor([1,2,3], device="CLANG")
+# a = (Tensor([1,2,3], device="CLANG") + 2)
+# a.tolist()

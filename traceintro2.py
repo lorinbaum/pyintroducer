@@ -3,16 +3,18 @@ import linecache
 import re
 import runpy
 from typing import List, Dict, Union
-from tokenize import tokenize, TokenError# , IndentationError
+from tokenize import tokenize, TokenError
 from io import BytesIO
 
-# TODO: print existing class definition when redefining it
+# TODO: print existing function definition when taking a different path through it. annotate whats different, note if its complete
+    # get complete definitions in preprocessing
 # TODO: don't reintroduce just introduced parents
-# TODO: don't print empty class declarations
+    # store lastintroduced parent
 # TODO: following function calls UOp.const for the first time. the functions definition is skipped.
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
     # maybe print the source of the call if its not printed already and explain what happened.
+# TODO: differentiate class definitions from imports from introductions
 
 class Tracer():
     def __init__(self, output_path):
@@ -26,42 +28,88 @@ class Tracer():
         self.lines:Dict[str:List[int]] = {}
         # stores lines that are part of multilines that should be ignored in all cases
         self.skipmultilines:Dict[str:List[int]] = {}
-        # stores filepaths of file that ran through self.processMultilines
+        # stores filepaths of file that ran through self.preprocess
         self.processedFiles = []
         # stores current filename:lineno on a call event (def or class statement), so following lines can find their parents easily
         self.parents = []
         # stores parents of the current line when tracing through line events, so that encountered functions and classes can get them assigned
-        self.prospectiveParents:List[Dict[str:str, str:int]] = []
+        # self.prospectiveParents:List[Dict[str:str, str:int]] = []
         self.parentsIntroduced = False
+        # class parents that contain nothing but class or function definitions and docstrings
+        self.unacceptableParents = []
 
         self.indent = 0
 
         self.spaced = True # beginning of line
 
 
-    def processMultilines(self, filepath:str):
+    def preprocess(self, filename:str):
         """
         reads file from top to bottom
-        tries to tokenize every line. if it fails, its a multiline statement. add lines until tokenize succeeds
-        every line in a multiline statement that isn't the first one is added to self.skipmultilines so it can later be ignored
+        multilines:
+            tries to tokenize every line. if it fails, its a multiline statement. add lines until tokenize succeeds
+            every line in a multiline statement that isn't the first one is added to self.skipmultilines so it can later be ignored
+        parents:
+            looks at indentation of class and def statements to determine parents, stores current prospective parents
+            judges prospective parents before moving to the next.
+                blacklists them if they have nothing but class or function definitions and docstrings
         """
-        if filepath in self.processedFiles: return
-        self.processedFiles.append(filepath)
-        self.skipmultilines[filepath] = []
-        with open(filepath, "r") as f:
-            i = 0
+        if filename in self.processedFiles: return
+        self.processedFiles.append(filename)
+        self.skipmultilines[filename] = []
+        def judgeParent():
+            if prospectiveParents and not prospectiveParents[-1]["acceptable"] and prospectiveParents[-1]["class"]:
+                self.unacceptableParents.append(prospectiveParents[-1]["name"])
+        with open(filename, "r") as f:
+            lineno = 0
+            baselineno = 1
             lines = f.readline()
+            prospectiveParents:List[Dict[str:str, str:int]] = []
             while True:
-                i += 1
-                if lines == "": break
+                lineno += 1
+                if lines == "":
+                    while prospectiveParents:
+                        judgeParent()
+                        prospectiveParents.pop()
+                    break
+                # process multilines
                 try:
                     list(tokenize(BytesIO(lines.encode("utf-8")).readline))
                 except TokenError as e:
                     if "EOF in multi-line" in str(e):
-                        self.skipmultilines[filepath].append(i + 1)
+                        self.skipmultilines[filename].append(lineno + 1)
                         lines += f.readline()
                         continue
                     else: raise(e)
+                # from here lines is always a full logical line including multilines if any
+                # process parents
+                if not any([
+                    lines.strip().startswith("class "), lines.strip().startswith("def "), lines.strip().startswith("@"),
+                    lines.strip().startswith('"""'), lines.strip().startswith("'''"), lines.strip() == ''
+                ]) and len(prospectiveParents) and prospectiveParents[-1]["class"]:
+                    # TODO: make it acceptable, if the class is only one line and does not have "pass" after its declaration
+                    prospectiveParents[-1]["acceptable"] = True
+                if lines.strip().startswith("def ") or lines.strip().startswith("class "):
+                    cl = lines.strip().startswith("class ")
+                    classline = lines.split("#")[0].strip()
+                    acceptable = False if not cl or classline.endswith(":") or classline.endswith("pass") else True
+                    indent = len(whitespace) if (whitespace:=re.search("^(\s*)", lines)[1]) else 0
+                    assert indent >= 0
+                    if not prospectiveParents: prospectiveParents = [{"name": f"{filename}:{baselineno}", "indent": 0, "class":cl, "acceptable": acceptable}]
+                    else:
+                        if indent > prospectiveParents[-1]["indent"]:
+                            prospectiveParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable})
+                        elif indent == prospectiveParents[-1]["indent"]:
+                            judgeParent()
+                            prospectiveParents[-1] = {"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable}
+                        else:
+                            while prospectiveParents and indent <= prospectiveParents[-1]["indent"]:
+                                judgeParent()
+                                prospectiveParents.pop()
+                            prospectiveParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable})
+                    if (key := f"{filename}:{baselineno}") not in self.lexicon: self.lexicon[key] = {"parents": [p["name"] for p in prospectiveParents[:-1]], "lines": []}
+                
+                baselineno = lineno + 1
                 lines = f.readline()
 
     def advance(self, filename, lineno, count):
@@ -113,7 +161,7 @@ class Tracer():
         return fullParent[::-1]
 
     def introduceParents(self):
-        if self.parentsIntroduced: return
+        if self.parentsIntroduced or self.parents[-1] in self.unacceptableParents: return
         parents = [self.parents[-1]] + self.lexicon[self.parents[-1]]["parents"]
         self.singleSpace(force = True)
         for p in parents[::-1]:
@@ -135,7 +183,7 @@ class Tracer():
         filename = frame.f_code.co_filename
         lineno = frame.f_lineno
         if "python3" not in filename and not filename.startswith("<"):
-            if filename not in self.processedFiles: self.processMultilines(filename)
+            if filename not in self.processedFiles: self.preprocess(filename)
             if filename not in self.lines: self.lines[filename] = []
             if lineno not in self.skipmultilines[filename]:
                 line, multilines = self.advance(filename, lineno, 0)
@@ -170,19 +218,6 @@ class Tracer():
                         consider the line only if it is not multiline or first line in multiline statement
                         """
                         if lineno not in self.lines[filename]:
-                            if line.strip().startswith("def ") or line.strip().startswith("class "):
-                                indent = len(whitespace) if (whitespace:=re.search("^(\s*)", line)[1]) else 0
-                                if indent == 0: self.prospectiveParents = [{"name": f"{filename}:{lineno}", "indent": 0}]
-                                else:
-                                    if indent > (prevIndent:=self.prospectiveParents[-1]["indent"]):
-                                        self.prospectiveParents.append({"name": f"{filename}:{lineno}", "indent": indent})
-                                    elif indent == prevIndent:
-                                        self.prospectiveParents[-1] = {"name": f"{filename}:{lineno}", "indent": indent}
-                                    else:
-                                        while self.prospectiveParents[-1]["indent"] != indent:
-                                            self.prospectiveParents.pop()
-                                        self.prospectiveParents[-1] = {"name": f"{filename}:{lineno}", "indent": indent}
-                                if (key :=f"{filename}:{lineno}") not in self.lexicon: self.lexicon[key] = {"parents": [p["name"] for p in self.prospectiveParents[:-1]], "lines": []}
                             if filename == script_path:
                                 self.write(filename, lineno, [line, *multilines])
                                 self.spaced = False
@@ -191,8 +226,8 @@ class Tracer():
                                 line.strip().startswith("from "),
                                 line.strip().startswith("import ")
                             ]):
-                                if len(self.parents):
-                                    if lineno not in self.lexicon[self.parents[-1]]["lines"]:
+                                if self.parents:
+                                    if lineno not in self.lexicon[self.parents[-1]]["lines"] and self.parents[-1] not in self.unacceptableParents:
                                         self.lexicon[self.parents[-1]]["lines"].append(lineno)
                                         if line.strip().startswith("def ") or line.strip().startswith("class "):
                                             if f"{filename}:{lineno}" == self.parents[-1]:

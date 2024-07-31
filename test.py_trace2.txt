@@ -5,8 +5,6 @@ helpers.py          :    11:  U = TypeVar("U")
 helpers.py          :    16:  OSX = platform.system() == "Darwin"
 helpers.py          :    17:  CI = os.getenv("CI", "") != ""
 
-helpers.py          :    79:    class GraphException(Exception): pass
-
 helpers.py          :    81:    class Context(contextlib.ContextDecorator):
 helpers.py          :    82:      stack: ClassVar[List[dict[str, int]]] = [{}]
 
@@ -48,10 +46,6 @@ helpers.py          :   127:      time_sum_s: ClassVar[float] = 0.0
 helpers.py          :   128:      kernel_count: ClassVar[int] = 0
 helpers.py          :   129:      mem_used: ClassVar[int] = 0   # NOTE: this is not reset
 
-helpers.py          :   135:    class Timing(contextlib.ContextDecorator):
-
-helpers.py          :   143:    class Profiling(contextlib.ContextDecorator):
-
 helpers.py          :   161:    class ProfileLogger:
 helpers.py          :   162:      writers: int = 0
 helpers.py          :   163:      mjson: List[Dict] = []
@@ -67,10 +61,6 @@ helpers.py          :   193:  CACHELEVEL = getenv("CACHELEVEL", 2)
 helpers.py          :   195:  VERSION = 16
 helpers.py          :   196:  _db_connection = None
 helpers.py          :   223:  _db_tables = set()
-helpers.py          :   297:    class tqdm:
-
-helpers.py          :   323:    class trange(tqdm):
-
 dtype.py            :     6:  ConstType = Union[float, int, bool]
 
 dtype.py            :     9:    @dataclass(frozen=True, order=True)
@@ -87,30 +77,6 @@ dtype.py            :    23:    class ImageDType(DType):
 dtype.py            :    24:      shape: Tuple[int, ...]   # arbitrary arg for the dtype, used in image for the shape
 dtype.py            :    25:      base: DType
 
-dtype.py            :    31:    # @dataclass(frozen=True, init=False, repr=False, eq=False)
-dtype.py            :    31:    class PtrDType(DType):
-
-dtype.py            :    38:    class dtypes:
-dtype.py            :    65:      bigint: Final[DType] = DType(-1, 0, "bigint", None, 1)   # arbitrary precision integer
-dtype.py            :    66:      bool: Final[DType] = DType(0, 1, "bool", '?', 1)
-dtype.py            :    67:      int8: Final[DType] = DType(1, 1, "char", 'b', 1)
-dtype.py            :    68:      uint8: Final[DType] = DType(2, 1, "unsigned char", 'B', 1)
-dtype.py            :    69:      int16: Final[DType] = DType(3, 2, "short", 'h', 1)
-dtype.py            :    70:      uint16: Final[DType] = DType(4, 2, "unsigned short", 'H', 1)
-dtype.py            :    71:      int32: Final[DType] = DType(5, 4, "int", 'i', 1)
-dtype.py            :    72:      uint32: Final[DType] = DType(6, 4, "unsigned int", 'I', 1)
-dtype.py            :    73:      int64: Final[DType] = DType(7, 8, "long", 'l', 1)
-dtype.py            :    74:      uint64: Final[DType] = DType(8, 8, "unsigned long", 'L', 1)
-dtype.py            :    75:      float16: Final[DType] = DType(9, 2, "half", 'e', 1)
-dtype.py            :    77:      bfloat16: Final[DType] = DType(10, 2, "__bf16", None, 1)
-dtype.py            :    78:      float32: Final[DType] = DType(11, 4, "float", 'f', 1)
-dtype.py            :    79:      float64: Final[DType] = DType(12, 8, "double", 'd', 1)
-dtype.py            :    82:      half = float16; float = float32; double = float64 # noqa: E702
-dtype.py            :    83:      uchar = uint8; ushort = uint16; uint = uint32; ulong = uint64 # noqa: E702
-dtype.py            :    84:      char = int8; short = int16; int = int32; long = int64 # noqa: E702
-dtype.py            :    92:      default_float: ClassVar[DType] = float32
-dtype.py            :    93:      default_int: ClassVar[DType] = int32
-
 dtype.py            :    95:  if (env_default_float := getenv("DEFAULT_FLOAT", "")):
 dtype.py            :   101:  promo_lattice = { dtypes.bool: [dtypes.int8, dtypes.uint8], dtypes.int8: [dtypes.int16], dtypes.int16: [dtypes.int32], dtypes.int32: [dtypes.int64],
 dtype.py            :   101:    dtypes.int64: [dtypes.float16, dtypes.bfloat16], dtypes.uint8: [dtypes.int16, dtypes.uint16], dtypes.uint16: [dtypes.int32, dtypes.uint32],
@@ -123,26 +89,6 @@ shape/symbolic.py   :    10:    class Node:
 shape/symbolic.py   :    11:      b: Union[Node, int]
 shape/symbolic.py   :    12:      min: int
 shape/symbolic.py   :    13:      max: sint
-
-shape/symbolic.py   :   111:    class Variable(Node):
-
-shape/symbolic.py   :   137:    class NumNode(Node):
-
-shape/symbolic.py   :   183:    class OpNode(Node):
-
-shape/symbolic.py   :   190:    class LtNode(OpNode):
-
-shape/symbolic.py   :   198:    class MulNode(OpNode):
-
-shape/symbolic.py   :   212:    class DivNode(OpNode):
-
-shape/symbolic.py   :   219:    class ModNode(OpNode):
-
-shape/symbolic.py   :   231:    class RedNode(Node):
-
-shape/symbolic.py   :   238:    class SumNode(RedNode):
-
-shape/symbolic.py   :   292:    class AndNode(RedNode):
 
 shape/symbolic.py   :   309:  sint = Union[int, Variable, MulNode, SumNode]
 shape/symbolic.py   :   317:  render_python: Dict[Type, Callable[..., str]] = {
@@ -267,10 +213,6 @@ codegen/uops.py     :    34:      op: UOps
 codegen/uops.py     :    35:      dtype: Optional[DType] = None
 codegen/uops.py     :    36:      src: Tuple[UOp, ...] = tuple()
 codegen/uops.py     :    37:      arg: Any = None
-
-codegen/uops.py     :   100:    class UPat:
-
-codegen/uops.py     :   145:    class PatternMatcher:
 
 ...transcendental.py:     6:  TRANSCENDENTAL_SUPPORTED_DTYPES = {dtypes.float16, dtypes.float32, dtypes.float64}
 codegen/uopgraph.py :    11:  if TYPE_CHECKING:
@@ -664,9 +606,6 @@ codegen/uopgraph.py :   394:    (UOp(UOps.EXPAND, src=(UOp.var('x'),), arg=()), 
 codegen/uopgraph.py :   394:    # no ALU on vectorized dtypes
 codegen/uopgraph.py :   394:    (UPat({UOps.ALU, UOps.CAST}, name="alu"), no_vectorized_alu),
 codegen/uopgraph.py :   394:  ])
-codegen/uopgraph.py :   432:    class UOpGraph:
-codegen/uopgraph.py :   464:      cnt = 0
-
 renderer/__init__.py:    10:    @dataclass(frozen=True)
 renderer/__init__.py:    10:    class TensorCore: # D = A * B + C, A is (M x K), B is (K x N), C and D are (M x N)
 renderer/__init__.py:    11:      dims: Tuple[int,int,int] # N, M, K
@@ -697,8 +636,6 @@ renderer/__init__.py:    55:      local_max: Optional[Tuple[int, ...]] = (0x8FFF
 renderer/__init__.py:    56:      shared_max: int = 32768
 renderer/__init__.py:    57:      tensor_cores: List[TensorCore] = []
 
-device.py           :    13:    class _Device:
-
 device.py           :    39:  Device = _Device()
 
 device.py           :    13:    class _Device:
@@ -712,69 +649,19 @@ device.py           :    47:      cpu_access: bool = False
 device.py           :    48:      host: bool = False
 device.py           :    49:      nolru: bool = False
 
-device.py           :    51:    class Buffer:
-
-device.py           :   131:    # TODO: size, dest, src are the same type. can we enforce this?
-device.py           :   131:    class Allocator:
-
-device.py           :   142:    class LRUAllocator(Allocator):  # pylint: disable=abstract-method
-device.py           :   143:      """
-device.py           :   143:      The LRU Allocator is responsible for caching buffers.
-device.py           :   143:      It ensures that buffers are not freed until it is absolutely necessary, optimizing performance.
-device.py           :   143:      """
-
-device.py           :   162:    class _MallocAllocator(LRUAllocator):
-
 device.py           :   169:  MallocAllocator = _MallocAllocator()
 
 device.py           :   142:    class LRUAllocator(Allocator):  # pylint: disable=abstract-method
 device.py           :   147:      def __init__(self): self.cache: Dict[Tuple[int, Optional[BufferOptions]], Any] = defaultdict(list)
 
-device.py           :   173:    class CompileError(Exception): pass
-
-device.py           :   175:    class Compiler:
-
-device.py           :   185:    class Compiled:
-
-device.py           :   217:    class HWCommandQueue:
-device.py           :   218:      """
-device.py           :   218:      A base class for hardware command queues in the HCQ (Hardware Command Queue) API.
-device.py           :   218:      Both compute and copy queues should have the following commands implemented.
-device.py           :   218:      """
-
 device.py           :   199:      def hcq_command(func):
 device.py           :   215:        return __wrapper
-
-device.py           :   301:    class HWComputeQueue(HWCommandQueue):
-
-device.py           :   338:    class HWCopyQueue(HWCommandQueue):
-
-device.py           :   366:    class HCQSignal:
-
-device.py           :   413:    class HCQProgram:
-
-device.py           :   418:    class HCQCompiled(Compiled):
-device.py           :   419:      """
-device.py           :   419:      A base class for devices compatible with the HCQ (Hardware Command Queue) API.
-device.py           :   419:      """
 
 device.py           :   468:    # Protocol for hcq compatible allocators for allocated buffers to contain VA address and it's size.
 device.py           :   468:    class HCQBuffer(Protocol): va_addr:int; size:int # noqa: E702
 
-device.py           :   470:    class HCQAllocator(LRUAllocator): # pylint: disable=abstract-method
-device.py           :   471:      """
-device.py           :   471:      A base allocator class compatible with the HCQ (Hardware Command Queue) API.
-device.py           :   471:    
-device.py           :   471:      This class implements basic copy operations following the HCQ API, utilizing both `HWComputeQueue` and `HWCopyQueue`.
-device.py           :   471:      """
-
 lazy.py             :    11:  lazycache: WeakValueDictionary[Any, LazyBuffer] = WeakValueDictionary()
 lazy.py             :    24:  view_supported_devices = {"LLVM", "CLANG", "CUDA", "NV", "AMD", "METAL", "DISK"}
-
-lazy.py             :    25:    class LazyBuffer:
-
-multi.py            :    50:    class MultiLazyBuffer:
-
 codegen/lowerer.py  :    15:  render_ops: Any = { NumNode: lambda self, ops, ctx: UOp.const(dtypes.bigint, self.b),
 codegen/lowerer.py  :    15:                      MulNode: lambda self, ops, ctx: self.a.render(ops, ctx)*variable_to_uop(self.b, ctx),
 codegen/lowerer.py  :    15:                      DivNode: lambda self, ops, ctx: self.a.render(ops, ctx)//variable_to_uop(self.b, ctx),
@@ -784,13 +671,9 @@ codegen/lowerer.py  :    15:    Variable: lambda self,ops,ctx: ctx[self] if ctx 
 codegen/lowerer.py  :    15:    SumNode: lambda self,ops,ctx: functools.reduce(lambda a,b: a+b.render(ops, ctx), self.nodes[1:], self.nodes[0].render(ops,ctx)),
 codegen/lowerer.py  :    15:    AndNode: lambda self,ops,ctx: functools.reduce(lambda a,b: a*b.render(ops, ctx), self.nodes[1:], self.nodes[0].render(ops,ctx)) }
 codegen/lowerer.py  :    24:  if getenv("UOP_IS_SYMBOLIC"):
-codegen/lowerer.py  :    90:    class IndependentLowerer:
-
 codegen/kernel.py   :    22:    class OptOps(Enum):
 codegen/kernel.py   :    23:      TC = auto(); UPCAST = auto(); UPCASTMID = auto(); UNROLL = auto(); LOCAL = auto() # noqa: E702
 codegen/kernel.py   :    24:      GROUP = auto(); GROUPTOP = auto(); NOLOCALS = auto(); PADTO = auto(); MERGE = auto(); SWAP = auto() # noqa: E702
-
-codegen/kernel.py   :    27:    class KernelOptError(Exception): pass
 
 codegen/kernel.py   :    33:    @dataclass(frozen=True, order=True)
 codegen/kernel.py   :    33:    class Opt:
@@ -803,9 +686,6 @@ codegen/kernel.py   :    45:    class TensorCoreOptions:
 codegen/kernel.py   :    46:      axes: Tuple[int, ...] # the location of the original N and M axes if still in the shape
 codegen/kernel.py   :    47:      axes_exist: Tuple[bool, ...] # true if the original N and M axes are still in the shape
 codegen/kernel.py   :    48:      axis_pads: Tuple[Tuple[int, int], ...]
-
-codegen/kernel.py   :    56:    class Kernel:
-codegen/kernel.py   :   638:      kernel_cnt: Final[DefaultDict[str, int]] = defaultdict(int)
 
 engine/graph.py     :    11:  with contextlib.suppress(ImportError): import networkx as nx
 engine/graph.py     :    15:  if DEBUG >= 2:
@@ -828,20 +708,6 @@ engine/schedule.py  :    27:      metadata: Optional[List[Metadata]] = None
 
 engine/schedule.py  :   309:  SCHEDULES: List = []
 engine/realize.py   :    15:  logkerns, logkerns_level = open(getenv("LOGKERNS", ""), "a") if getenv("LOGKERNS", "") else None, getenv("LOGKERNS_LEVEL", 1)
-engine/realize.py   :    63:    class Runner:
-
-engine/realize.py   :    73:    class CompiledRunner(Runner):
-
-engine/realize.py   :   100:    class CustomOp(Runner):
-
-engine/realize.py   :   106:    class EmptyOp(Runner):
-
-engine/realize.py   :   110:    class ViewOp(Runner):
-
-engine/realize.py   :   115:    class BufferCopy(Runner):
-
-engine/realize.py   :   138:    class BufferXfer(BufferCopy):
-
 engine/realize.py   :   147:  method_cache: Dict[Tuple[str, LazyOp, int, bool], CompiledRunner] = {}
 
 engine/realize.py   :   165:    @dataclass(frozen=True)
@@ -851,75 +717,7 @@ engine/realize.py   :   167:      bufs: List[Optional[Buffer]]
 engine/realize.py   :   168:      metadata: Optional[List[Metadata]] = None
 
 engine/realize.py   :   214:  capturing: List = []  # put classes with an add method in here
-tensor.py           :    23:    class Function:
-
 function.py         :     1:  """This is where the forwards and backwards passes live."""
-
-function.py         :    11:    class Contiguous(Function):
-
-function.py         :    15:    class ContiguousBackward(Function):
-
-function.py         :    19:    class Cast(Function):
-
-function.py         :    28:    class Neg(Function):
-
-function.py         :    32:    class Reciprocal(Function):
-
-function.py         :    39:    class Sin(Function):
-
-function.py         :    48:    # NOTE: maximum(x, 0) behaves differently where x=0
-function.py         :    48:    class Relu(Function):
-
-function.py         :    56:    class Log(Function):
-
-function.py         :    63:    class Exp(Function):
-
-function.py         :    70:    class Sqrt(Function):
-
-function.py         :    81:    # NOTE: the implicit derivative of sigmoid is not stable
-function.py         :    81:    # https://towardsdatascience.com/derivative-of-the-sigmoid-function-536880cf918e
-function.py         :    81:    # TODO: have the backend automatically find this
-function.py         :    81:    class Sigmoid(Function):
-
-function.py         :    89:    class Sign(Function):
-
-function.py         :    98:    class Less(Function):
-
-function.py         :   102:    class Neq(Function):
-
-function.py         :   106:    class Xor(Function):
-
-function.py         :   109:    class BitwiseAnd(Function):
-
-function.py         :   112:    class BitwiseOr(Function):
-
-function.py         :   115:    class Threefry(Function):
-
-function.py         :   118:    class Add(Function):
-
-function.py         :   125:    class Mul(Function):
-
-function.py         :   134:    class Div(Function):
-
-function.py         :   145:    class Where(Function):
-
-function.py         :   157:    class Sum(Function):
-
-function.py         :   164:    class Max(Function):
-
-function.py         :   179:    # NOTE: this is sum in reverse
-function.py         :   179:    class Expand(Function):
-
-function.py         :   187:    class Reshape(Function):
-
-function.py         :   194:    class Permute(Function):
-
-function.py         :   201:    class Pad(Function):
-
-function.py         :   208:    class Shrink(Function):
-
-function.py         :   215:    class Flip(Function):
-
 tensor.py           :    92:    class Tensor:
 tensor.py           :    93:      """
 tensor.py           :    93:      A `Tensor` is a multi-dimensional matrix containing elements of a single data type.
@@ -936,12 +734,7 @@ tensor.py           :   104:      __deletable__ = ('_ctx',)
 tensor.py           :   105:      training: ClassVar[bool] = False
 tensor.py           :   106:      no_grad: ClassVar[bool] = False
 
-tensor.py           :    92:      class Tensor:
-tensor.py           :   154:        class train(ContextDecorator):
-
-tensor.py           :    92:      class Tensor:
-tensor.py           :   159:        class inference_mode(ContextDecorator):
-
+tensor.py           :    92:    class Tensor:
 tensor.py           :   371:      _seed: int = int(time.time())
 tensor.py           :   372:      _rng_counter: Optional[Tensor] = None
 
@@ -959,219 +752,8 @@ tensor.py           :  3169:      setattr(Tensor, name, functools.wraps(fn)(_met
 tensor.py           :  3138:    def _metadata_wrapper(fn):
 tensor.py           :  3164:      return _wrapper
 
-nn/optim.py         :     7:    class Optimizer:
-nn/optim.py         :     8:      """
-nn/optim.py         :     8:      Base class for all optimizers.
-nn/optim.py         :     8:      """
-
-nn/optim.py         :    45:    class OptimizerGroup(Optimizer):
-nn/optim.py         :    46:      """
-nn/optim.py         :    46:      Combines multiple optimizers into one.
-nn/optim.py         :    46:      """
-
-nn/optim.py         :    67:    class LARS(Optimizer):
-nn/optim.py         :    68:      """
-nn/optim.py         :    68:      Layer-wise Adaptive Rate Scaling (LARS) optimizer with optional momentum and weight decay.
-nn/optim.py         :    68:    
-nn/optim.py         :    68:      - Described: https://paperswithcode.com/method/lars
-nn/optim.py         :    68:      - Paper: https://arxiv.org/abs/1708.03888v3
-nn/optim.py         :    68:      """
-
-nn/optim.py         :   119:    class LAMB(Optimizer):
-nn/optim.py         :   120:      """
-nn/optim.py         :   120:      LAMB optimizer with optional weight decay.
-nn/optim.py         :   120:    
-nn/optim.py         :   120:      - Described: https://paperswithcode.com/method/lamb
-nn/optim.py         :   120:      - Paper: https://arxiv.org/abs/1904.00962
-nn/optim.py         :   120:      """
-
 nn/state.py         :     9:  safe_dtypes = {"BOOL":dtypes.bool, "I8":dtypes.int8, "U8":dtypes.uint8, "I16":dtypes.int16, "U16":dtypes.uint16, "I32":dtypes.int, "U32":dtypes.uint,
 nn/state.py         :     9:                 "I64":dtypes.int64, "U64":dtypes.uint64, "F16":dtypes.float16, "BF16":dtypes.bfloat16, "F32":dtypes.float32, "F64":dtypes.float64}
 nn/state.py         :    11:  inverse_safe_dtypes = {v:k for k,v in safe_dtypes.items()}
-nn/__init__.py      :     7:    class BatchNorm:
-nn/__init__.py      :     8:      """
-nn/__init__.py      :     8:      Applies Batch Normalization over a 2D or 3D input.
-nn/__init__.py      :     8:    
-nn/__init__.py      :     8:      - Described: https://paperswithcode.com/method/batch-normalization
-nn/__init__.py      :     8:      - Paper: https://arxiv.org/abs/1502.03167v3
-nn/__init__.py      :     8:    
-nn/__init__.py      :     8:      See: `Tensor.batchnorm`
-nn/__init__.py      :     8:    
-nn/__init__.py      :     8:      ```python exec="true" session="tensor"
-nn/__init__.py      :     8:      from tinygrad import Tensor, dtypes, nn
-nn/__init__.py      :     8:      import numpy as np
-nn/__init__.py      :     8:      np.set_printoptions(precision=4)
-nn/__init__.py      :     8:      ```
-nn/__init__.py      :     8:    
-nn/__init__.py      :     8:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :     8:      norm = nn.BatchNorm(3)
-nn/__init__.py      :     8:      t = Tensor.rand(2, 3, 4, 4)
-nn/__init__.py      :     8:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :     8:      ```
-nn/__init__.py      :     8:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :     8:      t = norm(t)
-nn/__init__.py      :     8:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :     8:      ```
-nn/__init__.py      :     8:      """
-
 nn/__init__.py      :    62:  BatchNorm2d = BatchNorm3d = BatchNorm
-
-nn/__init__.py      :    82:    class Conv2d:
-nn/__init__.py      :    83:      """
-nn/__init__.py      :    83:      Applies a 2D convolution over an input signal composed of several input planes.
-nn/__init__.py      :    83:    
-nn/__init__.py      :    83:      See: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d
-nn/__init__.py      :    83:    
-nn/__init__.py      :    83:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :    83:      conv = nn.Conv2d(1, 1, 3)
-nn/__init__.py      :    83:      t = Tensor.rand(1, 1, 4, 4)
-nn/__init__.py      :    83:      print(t.numpy())
-nn/__init__.py      :    83:      ```
-nn/__init__.py      :    83:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :    83:      t = conv(t)
-nn/__init__.py      :    83:      print(t.numpy())
-nn/__init__.py      :    83:      ```
-nn/__init__.py      :    83:      """
-
-nn/__init__.py      :   126:    class ConvTranspose2d(Conv2d):
-nn/__init__.py      :   127:      """
-nn/__init__.py      :   127:      Applies a 2D transposed convolution operator over an input image.
-nn/__init__.py      :   127:    
-nn/__init__.py      :   127:      See: https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d
-nn/__init__.py      :   127:    
-nn/__init__.py      :   127:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   127:      conv = nn.ConvTranspose2d(1, 1, 3)
-nn/__init__.py      :   127:      t = Tensor.rand(1, 1, 4, 4)
-nn/__init__.py      :   127:      print(t.numpy())
-nn/__init__.py      :   127:      ```
-nn/__init__.py      :   127:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   127:      t = conv(t)
-nn/__init__.py      :   127:      print(t.numpy())
-nn/__init__.py      :   127:      ```
-nn/__init__.py      :   127:      """
-
-nn/__init__.py      :   152:    class Linear:
-nn/__init__.py      :   153:      """
-nn/__init__.py      :   153:      Applies a linear transformation to the incoming data.
-nn/__init__.py      :   153:    
-nn/__init__.py      :   153:      See: https://pytorch.org/docs/stable/generated/torch.nn.Linear
-nn/__init__.py      :   153:    
-nn/__init__.py      :   153:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   153:      lin = nn.Linear(3, 4)
-nn/__init__.py      :   153:      t = Tensor.rand(2, 3)
-nn/__init__.py      :   153:      print(t.numpy())
-nn/__init__.py      :   153:      ```
-nn/__init__.py      :   153:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   153:      t = lin(t)
-nn/__init__.py      :   153:      print(t.numpy())
-nn/__init__.py      :   153:      ```
-nn/__init__.py      :   153:      """
-
-nn/__init__.py      :   176:    class GroupNorm:
-nn/__init__.py      :   177:      """
-nn/__init__.py      :   177:      Applies Group Normalization over a mini-batch of inputs.
-nn/__init__.py      :   177:    
-nn/__init__.py      :   177:      - Described: https://paperswithcode.com/method/group-normalization
-nn/__init__.py      :   177:      - Paper: https://arxiv.org/abs/1803.08494v3
-nn/__init__.py      :   177:    
-nn/__init__.py      :   177:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   177:      norm = nn.GroupNorm(2, 12)
-nn/__init__.py      :   177:      t = Tensor.rand(2, 12, 4, 4) * 2 + 1
-nn/__init__.py      :   177:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   177:      ```
-nn/__init__.py      :   177:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   177:      t = norm(t)
-nn/__init__.py      :   177:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   177:      ```
-nn/__init__.py      :   177:      """
-
-nn/__init__.py      :   207:    class InstanceNorm:
-nn/__init__.py      :   208:      """
-nn/__init__.py      :   208:      Applies Instance Normalization over a mini-batch of inputs.
-nn/__init__.py      :   208:    
-nn/__init__.py      :   208:      - Described: https://paperswithcode.com/method/instance-normalization
-nn/__init__.py      :   208:      - Paper: https://arxiv.org/abs/1607.08022v3
-nn/__init__.py      :   208:    
-nn/__init__.py      :   208:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   208:      norm = nn.InstanceNorm(3)
-nn/__init__.py      :   208:      t = Tensor.rand(2, 3, 4, 4) * 2 + 1
-nn/__init__.py      :   208:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   208:      ```
-nn/__init__.py      :   208:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   208:      t = norm(t)
-nn/__init__.py      :   208:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   208:      ```
-nn/__init__.py      :   208:      """
-
-nn/__init__.py      :   234:    class LayerNorm:
-nn/__init__.py      :   235:      """
-nn/__init__.py      :   235:      Applies Layer Normalization over a mini-batch of inputs.
-nn/__init__.py      :   235:    
-nn/__init__.py      :   235:      - Described: https://paperswithcode.com/method/layer-normalization
-nn/__init__.py      :   235:      - Paper: https://arxiv.org/abs/1607.06450v1
-nn/__init__.py      :   235:    
-nn/__init__.py      :   235:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   235:      norm = nn.LayerNorm(3)
-nn/__init__.py      :   235:      t = Tensor.rand(2, 5, 3) * 2 + 1
-nn/__init__.py      :   235:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   235:      ```
-nn/__init__.py      :   235:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   235:      t = norm(t)
-nn/__init__.py      :   235:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   235:      ```
-nn/__init__.py      :   235:      """
-
-nn/__init__.py      :   262:    class LayerNorm2d(LayerNorm):
-nn/__init__.py      :   263:      """
-nn/__init__.py      :   263:      Applies Layer Normalization over a mini-batch of 2D inputs.
-nn/__init__.py      :   263:    
-nn/__init__.py      :   263:      See: `LayerNorm`
-nn/__init__.py      :   263:    
-nn/__init__.py      :   263:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   263:      norm = nn.LayerNorm2d(3)
-nn/__init__.py      :   263:      t = Tensor.rand(2, 3, 4, 4) * 2 + 1
-nn/__init__.py      :   263:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   263:      ```
-nn/__init__.py      :   263:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   263:      t = norm(t)
-nn/__init__.py      :   263:      print(t.mean().item(), t.std().item())
-nn/__init__.py      :   263:      ```
-nn/__init__.py      :   263:      """
-
-nn/__init__.py      :   280:    class RMSNorm:
-nn/__init__.py      :   281:      """
-nn/__init__.py      :   281:      Applies Root Mean Square Normalization to input.
-nn/__init__.py      :   281:    
-nn/__init__.py      :   281:      - Described: https://paperswithcode.com/method/rmsnorm
-nn/__init__.py      :   281:      - Paper: https://arxiv.org/abs/1910.07467
-nn/__init__.py      :   281:    
-nn/__init__.py      :   281:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   281:      norm = nn.RMSNorm(4)
-nn/__init__.py      :   281:      t = Tensor.arange(12, dtype=dtypes.float).reshape(3, 4)
-nn/__init__.py      :   281:      print(t.numpy())
-nn/__init__.py      :   281:      ```
-nn/__init__.py      :   281:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   281:      print(norm(t).numpy())
-nn/__init__.py      :   281:      ```
-nn/__init__.py      :   281:      """
-
-nn/__init__.py      :   302:    class Embedding:
-nn/__init__.py      :   303:      """
-nn/__init__.py      :   303:      A simple lookup table that stores embeddings of a fixed dictionary and size.
-nn/__init__.py      :   303:    
-nn/__init__.py      :   303:      See: https://pytorch.org/docs/stable/generated/torch.nn.Embedding
-nn/__init__.py      :   303:    
-nn/__init__.py      :   303:      ```python exec="true" source="above" session="tensor" result="python"
-nn/__init__.py      :   303:      emb = nn.Embedding(10, 3)
-nn/__init__.py      :   303:      print(emb(Tensor([1, 2, 3, 1])).numpy())
-nn/__init__.py      :   303:      ```
-nn/__init__.py      :   303:      """
-
-engine/jit.py       :    70:    class GraphRunner(Runner):  # pylint: disable=abstract-method
-
-engine/jit.py       :    88:    class MultiGraphRunner(GraphRunner):  # pylint: disable=abstract-method
-
 engine/jit.py       :   108:  ReturnType = TypeVar('ReturnType')
-
-engine/jit.py       :   109:    class TinyJit(Generic[ReturnType]):
-
