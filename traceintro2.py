@@ -14,7 +14,6 @@ from io import BytesIO
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
     # maybe print the source of the call if its not printed already and explain what happened.
-# TODO: differentiate class definitions from imports from introductions
 
 class Tracer():
     def __init__(self, output_path):
@@ -164,6 +163,7 @@ class Tracer():
         if self.parentsIntroduced or self.parents[-1] in self.unacceptableParents: return
         parents = [self.parents[-1]] + self.lexicon[self.parents[-1]]["parents"]
         self.singleSpace(force = True)
+        if linecache.getline(self.parents[-1].split(":")[0], int(self.parents[-1].split(":")[1])).strip().startswith("def "): self.output_file.write(f"{' ' * 28}{'  ' * self.indent}# introducing:\n")
         for p in parents[::-1]:
             lines = self.getFullParent(*p.split(":"))
             self.write(p.split(":")[0], int(p.split(":")[1]), lines)
@@ -171,7 +171,7 @@ class Tracer():
         self.parentsIntroduced = True
 
     def write(self, filename:str, lineno:int, lines:Union[str, List[str]]):
-        filename_short = filename.split("tinygrad/")[-1]
+        filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
         if len(filename_short) > 20: filename_short = f"...{filename_short[-17:]}"
         if not isinstance(lines, list): lines = [lines]
         for ln in lines:
