@@ -145,16 +145,6 @@ shape/symbolic.py   :   238:    class SumNode(RedNode):
 shape/symbolic.py   :   292:    class AndNode(RedNode):
 
 shape/symbolic.py   :   309:  sint = Union[int, Variable, MulNode, SumNode]
-shape/symbolic.py   :   318:    Variable: lambda self,ops,ctx: f"{self.expr}[{self.min}-{self.max}{'='+str(self.val) if self._val is not None else ''}]" if ctx == "DEBUG" \
-shape/symbolic.py   :   318:      else (f"Variable('{self.expr}', {self.min}, {self.max})"+(f".bind({self.val})" if self._val is not None else '') if ctx == "REPR" \
-shape/symbolic.py   :   318:      else f"{self.expr}"),
-shape/symbolic.py   :   321:    NumNode: lambda self,ops,ctx: f"NumNode({self.b})" if ctx == "REPR" else f"{self.b}",
-shape/symbolic.py   :   322:    MulNode: render_mulnode,
-shape/symbolic.py   :   323:    DivNode: lambda self,ops,ctx: f"({self.a.render(ops,ctx)}//{self.b})",
-shape/symbolic.py   :   324:    ModNode: lambda self,ops,ctx: f"({self.a.render(ops,ctx)}%{self.b})",
-shape/symbolic.py   :   325:    LtNode: lambda self,ops,ctx: f"({self.a.render(ops,ctx)}<{sym_render(self.b,ops,ctx)})",
-shape/symbolic.py   :   326:    SumNode: lambda self,ops,ctx: f"({'+'.join(sorted([x.render(ops,ctx) for x in self.nodes]))})",
-shape/symbolic.py   :   327:    AndNode: lambda self,ops,ctx: f"({' and '.join(sorted([x.render(ops,ctx) for x in self.nodes]))})",
 shape/symbolic.py   :   317:  render_python: Dict[Type, Callable[..., str]] = {
 shape/symbolic.py   :   317:    Variable: lambda self,ops,ctx: f"{self.expr}[{self.min}-{self.max}{'='+str(self.val) if self._val is not None else ''}]" if ctx == "DEBUG" \
 shape/symbolic.py   :   317:      else (f"Variable('{self.expr}', {self.min}, {self.max})"+(f".bind({self.val})" if self._val is not None else '') if ctx == "REPR" \
@@ -774,6 +764,7 @@ device.py           :   468:    class HCQBuffer(Protocol): va_addr:int; size:int
 device.py           :   470:    class HCQAllocator(LRUAllocator): # pylint: disable=abstract-method
 device.py           :   471:      """
 device.py           :   471:      A base allocator class compatible with the HCQ (Hardware Command Queue) API.
+device.py           :   471:    
 device.py           :   471:      This class implements basic copy operations following the HCQ API, utilizing both `HWComputeQueue` and `HWCopyQueue`.
 device.py           :   471:      """
 
@@ -781,146 +772,6 @@ lazy.py             :    11:  lazycache: WeakValueDictionary[Any, LazyBuffer] = 
 lazy.py             :    24:  view_supported_devices = {"LLVM", "CLANG", "CUDA", "NV", "AMD", "METAL", "DISK"}
 
 lazy.py             :    25:    class LazyBuffer:
-lazy.py             :    27:                   op:Optional[Op]=None, arg:Any=None, srcs:Tuple[LazyBuffer, ...]=(),
-lazy.py             :    28:                   base:Optional[LazyBuffer]=None, metadata:Optional[Metadata]=None):
-lazy.py             :    28:        self.device, self.st, self.dtype, self.shape, self.size, self.metadata = device, st, dtype, st.shape, st.size, metadata
-lazy.py             :    28:        self._base: Optional[LazyBuffer] = None
-lazy.py             :    28:        if base is None:
-lazy.py             :    28:          # properties on base
-lazy.py             :    28:          self.op, self.arg, self.srcs = op, arg, srcs  # this is a LazyOp, except the src is LazyBuffers and not LazyOps
-lazy.py             :    28:          assert self.op is not MetaOps.ASSIGN or srcs[1].base.realized is not None, "assign target must be realized"
-lazy.py             :    28:          if self.op is MetaOps.VIEW:
-lazy.py             :    28:            # some LazyBuffers can be processed with only a view, no AST required
-lazy.py             :    28:            self.buffer: Buffer = srcs[0].base.buffer.view(st.size, dtype, srcs[0].st.views[0].offset * srcs[0].dtype.itemsize)
-lazy.py             :    28:          else:
-lazy.py             :    28:            self.buffer = srcs[1].base.buffer if self.op is MetaOps.ASSIGN else Buffer(device, self.size, dtype)
-lazy.py             :    28:          self.buffer.ref(1)
-lazy.py             :    28:          self.contiguous_child: Optional[Tuple[ReferenceType[LazyBuffer], ShapeTracker]] = None
-lazy.py             :    28:          self.forced_realize = False
-lazy.py             :    28:        else:
-lazy.py             :    28:          # properties on view
-lazy.py             :    28:          assert base.base == base, "base must be a base itself"
-lazy.py             :    28:          self._base = base
-lazy.py             :    28:      def __del__(self):
-lazy.py             :    28:        if hasattr(self, 'buffer'): self.buffer.ref(-1)
-lazy.py             :    28:      def __repr__(self) -> str:
-lazy.py             :    28:        return f"<LB {self.device} {self.shape} {str(self.dtype)[7:]} {self.st if self.base != self else (self.op, self.realized)}>"
-lazy.py             :    28:      @property
-lazy.py             :    28:      def realized(self) -> Optional[Buffer]:
-lazy.py             :    28:        # NOTE: we check for a lack of srcs instead of an allocated buffer to make unrealized assigns return None here
-lazy.py             :    28:        return self.buffer if self._base is None and not hasattr(self, 'srcs') else None
-lazy.py             :    28:      # NOTE: this has to be a function to prevent self reference
-lazy.py             :    28:      @property
-lazy.py             :    28:      def base(self) -> LazyBuffer: return self._base if self._base is not None else self
-lazy.py             :    28:      # same API as multi
-lazy.py             :    28:      @property
-lazy.py             :    28:      def lbs(self) -> List[LazyBuffer]: return [self]
-lazy.py             :    28:      @staticmethod
-lazy.py             :    28:      def metaop(op, shape:Tuple[sint,...], dtype:DType, device:str, arg=None, src:Tuple[LazyBuffer, ...]=(), enable_cache=False) -> LazyBuffer:
-lazy.py             :    28:        assert isinstance(src, tuple)
-lazy.py             :    28:        return create_lazybuffer(device, ShapeTracker.from_shape(shape), dtype, op, arg, src, enable_cache=enable_cache)
-lazy.py             :    28:      def const(self, val:ConstType, shape:Optional[Tuple[sint,...]]=None) -> LazyBuffer:
-lazy.py             :    28:        assert isinstance(val, (int,float,bool)), f"{val=} has {type(val)=}, not a ConstType"
-lazy.py             :    28:        shape = self.shape if shape is None else shape
-lazy.py             :    28:        return LazyBuffer.metaop(MetaOps.CONST, tuple(), self.dtype, self.device, arg=val).reshape((1,)*len(shape)).expand(shape)
-lazy.py             :    28:      def is_realized(self) -> bool: return self.base.realized is not None
-lazy.py             :    28:      def assign(self, x:LazyBuffer) -> LazyBuffer:
-lazy.py             :    28:        assert x.size == self.size, f"assign target must have same size {self.size=} != {x.size=}"
-lazy.py             :    28:        return LazyBuffer.metaop(MetaOps.ASSIGN, self.shape, self.dtype, self.device, arg=() if self.st.contiguous else (self.st,), src=(x, self.base))
-lazy.py             :    28:      def can_view(self): return self.st.consecutive and not self.is_unrealized_const() and self.device.split(":")[0] in view_supported_devices
-lazy.py             :    28:      def contiguous(self, allow_buffer_view=True):
-lazy.py             :    28:        if not self.st.contiguous or self.size != self.base.size or self.is_unrealized_const():
-lazy.py             :    28:          ret = self.e(MetaOps.VIEW) if allow_buffer_view and self.can_view() else self.e(MetaOps.CONTIGUOUS)
-lazy.py             :    28:          if (sti := self.st.invert(self.base.shape)) is not None: self.base.contiguous_child = ref(ret), sti
-lazy.py             :    28:          return ret
-lazy.py             :    28:        self.base.forced_realize = True
-lazy.py             :    28:        return self
-lazy.py             :    28:      def cast(self, dtype:DType, bitcast:bool=False, allow_buffer_view=True):
-lazy.py             :    28:        if self.dtype == dtype: return self
-lazy.py             :    28:        if self.device.startswith("DISK") and not bitcast: raise RuntimeError("attempted to cast disk buffer (bitcast only)")
-lazy.py             :    28:        if self.is_unrealized_unmasked_const() and not bitcast:
-lazy.py             :    28:          return create_lazybuffer(self.device, self.st, dtype, MetaOps.CONST, dtypes.as_const(self.base.arg, dtype))
-lazy.py             :    28:        new_shape = self.shape
-lazy.py             :    28:        if bitcast and self.dtype.itemsize != dtype.itemsize:
-lazy.py             :    28:          if not self.device.startswith("DISK"): raise RuntimeError("shape changing bitcast only supported on DISK right now")
-lazy.py             :    28:          if not all_int(new_shape): raise RuntimeError("shape changing bitcast with symbolic shape isn't supported yet")
-lazy.py             :    28:          # https://pytorch.org/docs/stable/generated/torch.Tensor.view.html
-lazy.py             :    28:          if not (new_shape[-1]*self.dtype.itemsize) % dtype.itemsize == 0: raise RuntimeError("unsupported size in bitcast")
-lazy.py             :    28:          new_shape = new_shape[:-1] + ((new_shape[-1]*self.dtype.itemsize) // dtype.itemsize,)
-lazy.py             :    28:        elif getenv("CAST_BEFORE_VIEW", 1) and dtype.itemsize <= self.dtype.itemsize and self != self.base:
-lazy.py             :    28:          # TODO: applying this makes gpt2 slower
-lazy.py             :    28:          return self.base.cast(dtype, bitcast)._view(self.st)
-lazy.py             :    28:        cast_op: Union[MetaOps, UnaryOps] = (MetaOps.VIEW if self.can_view() and allow_buffer_view else UnaryOps.BITCAST) if bitcast else UnaryOps.CAST
-lazy.py             :    28:        return create_lazybuffer(self.device, ShapeTracker.from_shape(new_shape), dtype, cast_op, dtype, (self,))
-lazy.py             :    28:      def is_unrealized_const(self): return self.base.realized is None and self.base.op is MetaOps.CONST and not isinstance(self.base.arg, Variable)
-lazy.py             :    28:      def is_unrealized_unmasked_const(self): return self.is_unrealized_const() and all(v.mask is None for v in self.st.views)
-lazy.py             :    28:      def _copy(self, device:str) -> LazyBuffer:
-lazy.py             :    28:        return create_lazybuffer(device, ShapeTracker.from_shape(self.shape), self.dtype, MetaOps.COPY, self.buffer.nbytes, (self,), enable_cache=False)
-lazy.py             :    28:      def copy_to_device(self, device:str, force: bool = False) -> LazyBuffer:
-lazy.py             :    28:        # no COPY
-lazy.py             :    28:        if self.device == device: return self
-lazy.py             :    28:        # double COPY = one COPY
-lazy.py             :    28:        if not force and self.st.contiguous and self.size == self.base.size and not self.base.realized and self.base.op is MetaOps.COPY:
-lazy.py             :    28:          return self.base.srcs[0].copy_to_device(device).reshape(self.st.shape)
-lazy.py             :    28:        # const doesn't have to be copied (issues with disk tensor)
-lazy.py             :    28:        if self.is_unrealized_const():
-lazy.py             :    28:          return LazyBuffer.metaop(MetaOps.CONST, tuple(), self.dtype, device, arg=self.base.arg)._view(self.st)
-lazy.py             :    28:        # if it's a shrink, do the shrink before the copy with CONTIGUOUS
-lazy.py             :    28:        if prod(self.st.shape) < prod(self.base.st.shape): return self.contiguous()._copy(device)
-lazy.py             :    28:        # copy the base and apply the shapetracker on the new device
-lazy.py             :    28:        return self.base._copy(device)._view(self.st)
-lazy.py             :    28:      def e(self, op:Union[MetaOps, UnaryOps, BinaryOps, TernaryOps], *in_srcs:LazyBuffer, arg:Optional[Any]=None) -> LazyBuffer:
-lazy.py             :    28:        srcs: List[LazyBuffer] = []
-lazy.py             :    28:        for s in (self,)+in_srcs:
-lazy.py             :    28:          if s == s.base and s.base.contiguous_child and (root:=s.base.contiguous_child[0]()) is not None:
-lazy.py             :    28:            srcs.append(root._view(s.base.contiguous_child[1]))
-lazy.py             :    28:          else:
-lazy.py             :    28:            srcs.append(s)
-lazy.py             :    28:        assert all_same(dts:=[x.dtype.scalar() for x in (srcs[1:] if op is TernaryOps.WHERE else srcs)]), f"all dtypes must match {dts} on {op}"
-lazy.py             :    28:        assert all_same([x.shape for x in srcs]), f"all shapes must be the same {[x.shape for x in srcs]}"
-lazy.py             :    28:        if op is TernaryOps.WHERE: assert srcs[0].dtype == dtypes.bool, "TernaryOps.WHERE must have the first arg be bool"
-lazy.py             :    28:        if op is UnaryOps.NEG: assert srcs[0].dtype != dtypes.bool, "UnaryOps.NEG does not accept dtype bool"
-lazy.py             :    28:        out_dtype = dtypes.bool if op in (BinaryOps.CMPLT, BinaryOps.CMPNE) else srcs[-1].dtype
-lazy.py             :    28:        # const folding
-lazy.py             :    28:        if op in python_alu and all(s.is_unrealized_unmasked_const() for s in srcs):
-lazy.py             :    28:          return self.cast(out_dtype).const(exec_alu(op, out_dtype, [s.base.arg for s in srcs]))
-lazy.py             :    28:        if op is UnaryOps.NEG and self.base.op is UnaryOps.NEG and self.base.realized is None: return self.base.srcs[0]
-lazy.py             :    28:        if op in BinaryOps:
-lazy.py             :    28:          x, y = self, in_srcs[0]
-lazy.py             :    28:          if op is BinaryOps.ADD:
-lazy.py             :    28:            if y.is_unrealized_unmasked_const() and y.base.arg == 0: return x
-lazy.py             :    28:            if x.is_unrealized_unmasked_const() and x.base.arg == 0: return y
-lazy.py             :    28:          if op is BinaryOps.MUL:
-lazy.py             :    28:            if x.is_unrealized_unmasked_const() and (val := x.base.arg) in (1, 0, -1):
-lazy.py             :    28:              return y if val == 1 else y.const(0) if val == 0 else y.e(UnaryOps.NEG)
-lazy.py             :    28:            if y.is_unrealized_unmasked_const() and (val := y.base.arg) in (1, 0, -1):
-lazy.py             :    28:              return x if val == 1 else x.const(0) if val == 0 else x.e(UnaryOps.NEG)
-lazy.py             :    28:        return create_lazybuffer(self.device, ShapeTracker.from_shape(self.shape), out_dtype, op, arg, tuple(srcs))
-lazy.py             :    28:      # *** reduce ops ***
-lazy.py             :    28:      def _reduce_op(self, op:ReduceOps, axis:Tuple[int, ...]) -> LazyBuffer:
-lazy.py             :    28:        assert all(0 <= x < len(self.shape) for x in axis), f"axis args {axis} out of range for shape {self.shape}"
-lazy.py             :    28:        axis = tuple(sorted([x for x in axis if self.shape[x] != 1]))
-lazy.py             :    28:        if len(axis) == 0: return self
-lazy.py             :    28:        return create_lazybuffer(self.device, ShapeTracker.from_shape(reduce_st(self.st, axis)), self.dtype, op, axis, (self,))
-lazy.py             :    28:      def r(self, op:ReduceOps, axis:Tuple[int, ...]) -> LazyBuffer:
-lazy.py             :    28:        new_shape = reduce_st(self.st, axis)
-lazy.py             :    28:        # TODO: this logic should move to the scheduler
-lazy.py             :    28:        if 0 in self.shape and 0 not in new_shape: return self.const({ReduceOps.SUM: 0.0, ReduceOps.MAX: dtypes.min(self.dtype)}[op], new_shape)
-lazy.py             :    28:        # const folding
-lazy.py             :    28:        # TODO: fold this for symbolic?
-lazy.py             :    28:        if self.is_unrealized_unmasked_const() and all_int(self.shape):
-lazy.py             :    28:          return self.const(self.base.arg * {ReduceOps.SUM: prod(self.shape[i] for i in axis), ReduceOps.MAX: 1}[op], new_shape)
-lazy.py             :    28:        # TODO: can we split symbolic shape if the reduce axis is not symbolic?
-lazy.py             :    28:        if not getenv("SPLIT_REDUCEOP", 1) or not all_int(self.shape) or (0 in self.shape) or \
-lazy.py             :    28:          prod(self.shape) // prod(new_shape) < getenv("REDUCEOP_SPLIT_THRESHOLD", 32768):
-lazy.py             :    28:          return self._reduce_op(op, axis)
-lazy.py             :    28:        # if there are few globals, make some reduces into globals by splitting into two kernels
-lazy.py             :    28:        # cap output buffer to 2**22: heuristic number of global outputs to achieve max occupancy with enough locals+upcasts for gemm
-lazy.py             :    28:        #   ~2**10 should be enough if GROUP is used
-lazy.py             :    28:        # 256 split maximum should be "negligible reduce" for low prod(new_shape), 8 split minimum.
-lazy.py             :    28:        # split is moved to the end to provide maximum locality for the second phase reduce.
-lazy.py             :    28:        self_real_strides = self.st.real_strides(ignore_valid=True)
-lazy.py             :    28:        split_candidates = [(i, x) for i in axis for x in range(min(256,2**getenv("REDUCEOP_SPLIT_SIZE",22)//prod(new_shape)),8-1,-1)
 
 multi.py            :    50:    class MultiLazyBuffer:
 
@@ -975,44 +826,6 @@ engine/schedule.py  :    25:      ast: LazyOp
 engine/schedule.py  :    26:      bufs: Tuple[Buffer, ...]
 engine/schedule.py  :    27:      metadata: Optional[List[Metadata]] = None
 
-engine/schedule.py  :   136:      children:DefaultDict[LazyBuffer, Dict[LazyBuffer, None]], assign_targets:Dict[LazyBuffer, LazyBuffer], scheduled=False):
-engine/schedule.py  :   136:    """recursively search the entire graph for all LazyBuffers, insert realizes after expands"""
-engine/schedule.py  :   136:    if buf in allbufs or buf.base.realized is not None: return
-engine/schedule.py  :   136:    if GRAPH: log_lazybuffer(buf, scheduled)
-engine/schedule.py  :   136:    # check if we need to realize views
-engine/schedule.py  :   136:    if buf is not buf.base:
-engine/schedule.py  :   136:      # fuse some pads
-engine/schedule.py  :   136:      if len(buf.st.views) == 1 and buf.st.views[-1].mask is not None and all_int(buf.base.st.shape) and \
-engine/schedule.py  :   136:          prod(buf.base.st.shape) >= prod([y-x for x,y in buf.st.views[-1].mask]):
-engine/schedule.py  :   136:        simple_pads[buf.base] = None
-engine/schedule.py  :   136:      # realize all expands
-engine/schedule.py  :   136:      elif prod(buf.base.st.shape) < prod(buf.st.shape):
-engine/schedule.py  :   136:        # this was causing "test_lil_model" to fail
-engine/schedule.py  :   136:        if buf.base.op is UnaryOps.CAST and isinstance(buf.base.srcs[0].dtype, ImageDType) and isinstance(buf.base.arg, ImageDType):
-engine/schedule.py  :   136:          simple_pads[buf.base] = None # don't realize image to image casts. this is part of a larger problem
-engine/schedule.py  :   136:        elif not FUSE_AS_ONE_KERNEL: realizes[buf.base] = None
-engine/schedule.py  :   136:      # check all other pads for safe fusion
-engine/schedule.py  :   136:      elif any(v.mask is not None for v in buf.st.views): simple_pads[buf.base] = None
-engine/schedule.py  :   136:      return _recurse_lb(buf.base, realizes, allbufs, simple_pads, children, assign_targets)
-engine/schedule.py  :   136:    allbufs[buf] = None
-engine/schedule.py  :   136:    if buf.forced_realize or buf.op in MetaOps: realizes[buf] = None
-engine/schedule.py  :   136:    if buf.op is MetaOps.ASSIGN:
-engine/schedule.py  :   136:      assert buf.srcs[1].base is buf.srcs[1], f"assign must be to base {buf.srcs[1]}"
-engine/schedule.py  :   136:      assert buf.srcs[1].realized is not None, f"assign must be already realized to schedule {buf.srcs[1]}"
-engine/schedule.py  :   136:      assign_targets[buf.srcs[1]] = buf
-engine/schedule.py  :   136:    if buf.op is MetaOps.COPY:
-engine/schedule.py  :   136:      assert buf.srcs[0].st.contiguous and buf.srcs[0].size == buf.srcs[0].base.size, "can only copy contig"
-engine/schedule.py  :   136:      realizes[buf.srcs[0].base] = None
-engine/schedule.py  :   136:    if buf.op is MetaOps.VIEW: realizes[buf.srcs[0].base] = None
-engine/schedule.py  :   136:    for x in buf.srcs:
-engine/schedule.py  :   136:      if x.base.realized is None: children[x.base][buf] = None
-engine/schedule.py  :   136:      _recurse_lb(x, realizes, allbufs, simple_pads, children, assign_targets)
-engine/schedule.py  :   136:  def _is_padding_okay(buf:LazyBuffer, realizes:Dict[LazyBuffer, None]) -> bool:
-engine/schedule.py  :   136:    if buf in realizes or buf.realized is not None: return True
-engine/schedule.py  :   136:    # NOTE: this broke to_image_idx and coder with JIT
-engine/schedule.py  :   136:    if buf.op in UNSAFE_PAD_OPS: return False
-engine/schedule.py  :   136:    return all(_is_padding_okay(x.base, realizes) for x in buf.srcs)
-engine/schedule.py  :   136:  def _recursive_group(tr:LazyBuffer, st:ShapeTracker, r:LazyBuffer, children:DefaultDict[LazyBuffer, Dict[LazyBuffer, None]],
 engine/schedule.py  :   309:  SCHEDULES: List = []
 engine/realize.py   :    15:  logkerns, logkerns_level = open(getenv("LOGKERNS", ""), "a") if getenv("LOGKERNS", "") else None, getenv("LOGKERNS_LEVEL", 1)
 engine/realize.py   :    63:    class Runner:
@@ -1110,6 +923,7 @@ function.py         :   215:    class Flip(Function):
 tensor.py           :    92:    class Tensor:
 tensor.py           :    93:      """
 tensor.py           :    93:      A `Tensor` is a multi-dimensional matrix containing elements of a single data type.
+tensor.py           :    93:    
 tensor.py           :    93:      ```python exec="true" session="tensor"
 tensor.py           :    93:      from tinygrad import Tensor, dtypes, nn
 tensor.py           :    93:      import numpy as np
@@ -1121,538 +935,15 @@ tensor.py           :   103:      __slots__ = "lazydata", "requires_grad", "grad
 tensor.py           :   104:      __deletable__ = ('_ctx',)
 tensor.py           :   105:      training: ClassVar[bool] = False
 tensor.py           :   106:      no_grad: ClassVar[bool] = False
-tensor.py           :   109:                   device:Optional[Union[str, tuple, list]]=None, dtype:Optional[DType]=None, requires_grad:Optional[bool]=None):
-tensor.py           :   109:        assert dtype is None or isinstance(dtype, DType), f"invalid dtype {dtype}"
-tensor.py           :   109:        device = tuple(Device.canonicalize(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize(device)
-tensor.py           :   109:        # tensors can have gradients if you have called .backward
-tensor.py           :   109:        self.grad: Optional[Tensor] = None
-tensor.py           :   109:        # NOTE: this can be in three states. False and None: no gradient, True: gradient
-tensor.py           :   109:        # None (the default) will be updated to True if it's put in an optimizer
-tensor.py           :   109:        self.requires_grad: Optional[bool] = requires_grad
-tensor.py           :   109:        # internal variable used for autograd graph construction
-tensor.py           :   109:        self._ctx: Optional[Function] = None
-tensor.py           :   109:        # create a LazyBuffer from the different types of inputs
-tensor.py           :   109:        if isinstance(data, LazyBuffer): assert dtype is None or dtype == data.dtype, "dtype doesn't match, and casting isn't supported"
-tensor.py           :   109:        elif isinstance(data, get_args(ConstType)): data = _metaop(MetaOps.CONST, tuple(), dtype or dtypes.from_py(data), device, data)
-tensor.py           :   109:        elif isinstance(data, Variable): data = _metaop(MetaOps.CONST, tuple(), dtype or dtypes.from_py(data.unbind()[1]), device, data)
-tensor.py           :   109:        elif isinstance(data, bytes): data = _frompy(data, dtypes.uint8 if dtype is None else dtype)
-tensor.py           :   109:        elif isinstance(data, (list, tuple)):
-tensor.py           :   109:          if dtype is None:
-tensor.py           :   109:            if (d := fully_flatten(data)) and all(isinstance(s, bool) for s in d): dtype = dtypes.bool
-tensor.py           :   109:            else: dtype = dtypes.default_int if d and all_int(d) else dtypes.default_float
-tensor.py           :   109:          if dtype == dtypes.bfloat16: data = Tensor(_fromnp(np.array(data, np.float32)), device=device).cast(dtypes.bfloat16).lazydata
-tensor.py           :   109:          else: data = _fromnp(np.array(data).astype(_to_np_dtype(dtype)))
-tensor.py           :   109:        elif data is None: data = _metaop(MetaOps.EMPTY, (0,), dtype or dtypes.default_float, device)
-tensor.py           :   109:        elif isinstance(data, np.ndarray):
-tensor.py           :   109:          if data.shape == (): data = _metaop(MetaOps.CONST, tuple(), dtype or _from_np_dtype(data.dtype), device, data.item())
-tensor.py           :   109:          else: data = _fromnp(data.astype(npdtype) if dtype is not None and (npdtype:=_to_np_dtype(dtype)) is not None else data)
-tensor.py           :   109:        # by this point, it has to be a LazyBuffer
-tensor.py           :   109:        if not isinstance(data, (LazyBuffer, MultiLazyBuffer)):
-tensor.py           :   109:          raise RuntimeError(f"can't create Tensor from {data!r} with type {type(data)}")
-tensor.py           :   109:        # data is a LazyBuffer, but it might be on the wrong device
-tensor.py           :   109:        if isinstance(device, tuple):
-tensor.py           :   109:          # if device is a tuple, we should have/construct a MultiLazyBuffer
-tensor.py           :   109:          if isinstance(data, MultiLazyBuffer):
-tensor.py           :   109:            assert data.device == device, f"MultiLazyBuffer device mismatch, {data.device} != {device}"
-tensor.py           :   109:            self.lazydata: Union[LazyBuffer, MultiLazyBuffer] = data
-tensor.py           :   109:          else:
-tensor.py           :   109:            self.lazydata = MultiLazyBuffer.from_sharded(data, device, None)
-tensor.py           :   109:        else:
-tensor.py           :   109:          self.lazydata = data if data.device == device else data.copy_to_device(device)
-tensor.py           :   109:      class train(ContextDecorator):
-tensor.py           :   109:        def __init__(self, mode:bool = True): self.mode = mode
-tensor.py           :   109:        def __enter__(self): self.prev, Tensor.training = Tensor.training, self.mode
-tensor.py           :   109:        def __exit__(self, exc_type, exc_value, traceback): Tensor.training = self.prev
-tensor.py           :   109:      class inference_mode(ContextDecorator):
-tensor.py           :   109:        def __init__(self, mode:bool = True): self.mode = mode
-tensor.py           :   109:        def __enter__(self): self.prev, Tensor.no_grad = Tensor.no_grad, self.mode
-tensor.py           :   109:        def __exit__(self, exc_type, exc_value, traceback): Tensor.no_grad = self.prev
-tensor.py           :   109:      def __repr__(self):
-tensor.py           :   109:        return f"<Tensor {self.lazydata!r} on {self.device} with grad {(self.grad.lazydata if self.grad is not None else None)!r}>"
-tensor.py           :   109:      # Python has a non moving GC, so this should be okay
-tensor.py           :   109:      def __hash__(self): return id(self)
-tensor.py           :   109:      def __bool__(self): raise TypeError("__bool__ on Tensor is not defined")
-tensor.py           :   109:      def __len__(self):
-tensor.py           :   109:        if not self.shape: raise TypeError("len() of a 0-d tensor")
-tensor.py           :   109:        return self.shape[0]
-tensor.py           :   109:      @property
-tensor.py           :   109:      def device(self) -> Union[str, Tuple[str, ...]]: return self.lazydata.device
-tensor.py           :   109:      @property
-tensor.py           :   109:      def shape(self) -> Tuple[sint, ...]: return self.lazydata.shape
-tensor.py           :   109:      @property
-tensor.py           :   109:      def dtype(self) -> DType: return self.lazydata.dtype
-tensor.py           :   109:      # ***** data handlers ****
-tensor.py           :   109:      def schedule_with_vars(self, *lst:Tensor, seen:Optional[Set[LazyBuffer]]=None) -> Tuple[List[ScheduleItem], Dict[Variable, int]]:
-tensor.py           :   109:        """Creates the schedule needed to realize these Tensor(s), with Variables."""
-tensor.py           :   109:        if getenv("FUZZ_SCHEDULE"):
-tensor.py           :   109:          from test.external.fuzz_schedule import fuzz_schedule
-tensor.py           :   109:          fuzz_schedule(flatten([x.lazydata.lbs for x in (self,)+lst]))
-tensor.py           :   109:        schedule, var_vals = create_schedule_with_vars(flatten([x.lazydata.lbs for x in (self,)+lst]), seen)
-tensor.py           :   109:        return memory_planner(schedule), var_vals
-tensor.py           :   109:      def schedule(self, *lst:Tensor, seen:Optional[Set[LazyBuffer]]=None) -> List[ScheduleItem]:
-tensor.py           :   109:        """Creates the schedule needed to realize these Tensor(s)."""
-tensor.py           :   109:        schedule, var_vals = self.schedule_with_vars(*lst, seen=seen)
-tensor.py           :   109:        assert len(var_vals) == 0
-tensor.py           :   109:        return schedule
-tensor.py           :   109:      def realize(self, *lst:Tensor, do_update_stats=True) -> Tensor:
-tensor.py           :   109:        """Triggers the computation needed to create these Tensor(s)."""
-tensor.py           :   109:        run_schedule(*self.schedule_with_vars(*lst), do_update_stats=do_update_stats)
-tensor.py           :   109:        return self
-tensor.py           :   109:      def replace(self, x:Tensor) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Replaces the data of this tensor with the data of another tensor. Only the shape of the tensors must match.
-tensor.py           :   109:        """
-tensor.py           :   109:        # used for replacing a Tensor with a new version of it (potentially with a different device and dtype)
-tensor.py           :   109:        assert not x.requires_grad and getattr(self, '_ctx', None) is None
-tensor.py           :   109:        assert self.shape == x.shape, f"replace shape mismatch {self.shape} != {x.shape}"
-tensor.py           :   109:        self.lazydata = x.lazydata
-tensor.py           :   109:        return self
-tensor.py           :   109:      def assign(self, x) -> Tensor:
-tensor.py           :   109:        # TODO: this is a hack for writing to DISK. remove with working assign
-tensor.py           :   109:        if isinstance(self.device, str) and self.device.startswith("DISK"):
-tensor.py           :   109:          if x.__class__ is not Tensor: x = Tensor(x, device="NPY", dtype=self.dtype)
-tensor.py           :   109:          self.contiguous().realize().lazydata.base.realized.copyin(x.numpy().data)
-tensor.py           :   109:          return self
-tensor.py           :   109:        if x.__class__ is not Tensor: x = Tensor(x, device=self.device, dtype=self.dtype)
-tensor.py           :   109:        if DEBUG >= 4: print(f"assign {self.lazydata} <- {x.lazydata}")
-tensor.py           :   109:        if self.lazydata is x.lazydata: return self  # a self assign is a NOOP
-tensor.py           :   109:        # NOTE: we allow cross device assign
-tensor.py           :   109:        assert self.shape == x.shape, f"assign shape mismatch {self.shape} != {x.shape}"
-tensor.py           :   109:        assert self.device == x.device, f"assign device mismatch {self.device} != {x.device}"
-tensor.py           :   109:        assert self.dtype == x.dtype, f"assign dtype mismatch {self.dtype} != {x.dtype}"
-tensor.py           :   109:        assert not isinstance(self.lazydata, MultiLazyBuffer) or self.lazydata.axis == x.lazydata.axis, "axis must match on MultiLazyBuffer"
-tensor.py           :   109:        assert not x.requires_grad  # self requires_grad is okay?
-tensor.py           :   109:        if not self.lazydata.is_realized(): return self.replace(x)
-tensor.py           :   109:        self.lazydata = self.lazydata.assign(x.lazydata)
-tensor.py           :   109:        return self
-tensor.py           :   109:      def detach(self) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns a new tensor with the same data as this tensor, but detached from the autograd graph.
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor(self.lazydata, device=self.device, requires_grad=False)
-tensor.py           :   109:      def _data(self) -> memoryview:
-tensor.py           :   109:        if 0 in self.shape: return memoryview(bytearray(0))
-tensor.py           :   109:        # NOTE: this realizes on the object from as_buffer being a Python object
-tensor.py           :   109:        cpu = self.cast(self.dtype.scalar()).contiguous().to("CLANG").realize()
-tensor.py           :   109:        buf = cast(Buffer, cast(LazyBuffer, cpu.lazydata).base.realized)
-tensor.py           :   109:        if self.device != "CLANG": buf.options = BufferOptions(nolru=True)
-tensor.py           :   109:        return buf.as_buffer(allow_zero_copy=True if self.device != "CLANG" else False)
-tensor.py           :   109:      def data(self) -> memoryview:
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns the data of this tensor as a memoryview.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor([1, 2, 3, 4])
-tensor.py           :   109:        print(np.frombuffer(t.data(), dtype=np.int32))
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        assert self.dtype.fmt is not None, f"no fmt dtype for {self.dtype}"
-tensor.py           :   109:        assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
-tensor.py           :   109:        return self._data().cast(self.dtype.fmt, self.shape)
-tensor.py           :   109:      def item(self) -> ConstType:
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns the value of this tensor as a standard Python number.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor(42)
-tensor.py           :   109:        print(t.item())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        assert self.dtype.fmt is not None, f"no fmt dtype for {self.dtype}"
-tensor.py           :   109:        assert self.numel() == 1, "must have one element for item"
-tensor.py           :   109:        return self._data().cast(self.dtype.fmt)[0]
-tensor.py           :   109:      # TODO: should be Tensor.tolist() -> Union[List[ConstType], ConstType]. The List is Sequence because mypy expects memoryview.tolist() -> list[int]
-tensor.py           :   109:      # src: https://github.com/python/mypy/blob/release-1.6/mypy/typeshed/stdlib/builtins.pyi#L803
-tensor.py           :   109:      def tolist(self) -> Union[Sequence[ConstType], ConstType]:
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns the value of this tensor as a nested list.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor([1, 2, 3, 4])
-tensor.py           :   109:        print(t.tolist())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return self.data().tolist()
-tensor.py           :   109:      def numpy(self) -> np.ndarray:
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns the value of this tensor as a `numpy.ndarray`.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor([1, 2, 3, 4])
-tensor.py           :   109:        print(repr(t.numpy()))
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        if self.dtype == dtypes.bfloat16: return self.float().numpy()
-tensor.py           :   109:        assert _to_np_dtype(self.dtype) is not None, f"no np dtype for {self.dtype}"
-tensor.py           :   109:        assert all_int(self.shape), f"no data if shape is symbolic, {self.shape=}"
-tensor.py           :   109:        return np.frombuffer(self._data(), dtype=_to_np_dtype(self.dtype)).reshape(self.shape)
-tensor.py           :   109:      def to(self, device:Optional[Union[str, Tuple[str, ...]]]) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Moves the tensor to the given device.
-tensor.py           :   109:        """
-tensor.py           :   109:        device = tuple(Device.canonicalize(x) for x in device) if isinstance(device, (tuple, list)) else Device.canonicalize(device)
-tensor.py           :   109:        if device == self.device: return self
-tensor.py           :   109:        if not isinstance(device, str): return self.shard(device)
-tensor.py           :   109:        ret = Tensor(self.lazydata, device, requires_grad=self.requires_grad)
-tensor.py           :   109:        if self.grad is not None: ret.grad = self.grad.to(device)
-tensor.py           :   109:        if hasattr(self, '_ctx'): ret._ctx = self._ctx
-tensor.py           :   109:        return ret
-tensor.py           :   109:      def to_(self, device:Optional[Union[str, Tuple[str, ...]]]):
-tensor.py           :   109:        """
-tensor.py           :   109:        Moves the tensor to the given device in place.
-tensor.py           :   109:        """
-tensor.py           :   109:        real = self.to(device)
-tensor.py           :   109:        # TODO: is this assign?
-tensor.py           :   109:        if self.grad is not None and real.grad is not None: self.grad.lazydata = real.grad.lazydata
-tensor.py           :   109:        self.lazydata = real.lazydata
-tensor.py           :   109:      def shard(self, devices:Tuple[str, ...], axis:Optional[int]=None) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Shards the tensor across the given devices.
-tensor.py           :   109:        """
-tensor.py           :   109:        assert isinstance(self.lazydata, LazyBuffer), "can't shard a MultiLazyBuffer"
-tensor.py           :   109:        canonical_devices = tuple(Device.canonicalize(x) for x in devices)
-tensor.py           :   109:        if axis is not None and axis < 0: axis += len(self.shape)
-tensor.py           :   109:        return Tensor(MultiLazyBuffer.from_sharded(self.lazydata, canonical_devices, axis), device=canonical_devices, requires_grad=self.requires_grad)
-tensor.py           :   109:      def shard_(self, devices:Tuple[str, ...], axis:Optional[int]=None):
-tensor.py           :   109:        """
-tensor.py           :   109:        Shards the tensor across the given devices in place.
-tensor.py           :   109:        """
-tensor.py           :   109:        self.lazydata = self.shard(devices, axis).lazydata
-tensor.py           :   109:        return self
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def from_node(y:Node, **kwargs) -> Tensor:
-tensor.py           :   109:        if isinstance(y, NumNode): return Tensor(y.b, **kwargs, requires_grad=False)
-tensor.py           :   109:        if isinstance(y, Variable): return Tensor(y, **kwargs, requires_grad=False)
-tensor.py           :   109:        if isinstance(y, MulNode): return Tensor.from_node(y.a, **kwargs) * y.b
-tensor.py           :   109:        if isinstance(y, SumNode): return Tensor.from_node(y.nodes[0], **kwargs) + sum(y.nodes[1:])
-tensor.py           :   109:        raise RuntimeError(f"unhandled Node {y}")
-tensor.py           :   109:      # ***** creation entrypoint *****
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def _metaop(op, shape, device:Optional[Union[Tuple[str, ...], str]]=None, dtype:Optional[DType]=None, arg=None, **kwargs):
-tensor.py           :   109:        if isinstance(device, tuple):
-tensor.py           :   109:          return Tensor(MultiLazyBuffer([LazyBuffer.metaop(op, shape, dtype or dtypes.default_float, Device.canonicalize(d), arg) \
-tensor.py           :   109:                                          for d in device], None), device, dtype, **kwargs)
-tensor.py           :   109:        return Tensor(LazyBuffer.metaop(op, shape, dtype or dtypes.default_float, Device.canonicalize(device), arg), device, dtype, **kwargs)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def empty(*shape, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates an empty tensor with the given shape.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor.empty(2, 3)
-tensor.py           :   109:        print(t.shape)
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor._metaop(MetaOps.EMPTY, argfix(*shape), **kwargs)
-tensor.py           :   109:      _seed: int = int(time.time())
-tensor.py           :   109:      _rng_counter: Optional[Tensor] = None
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def manual_seed(seed=0):
-tensor.py           :   109:        """
-tensor.py           :   109:        Sets the seed for random operations.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.rand(5).numpy())
-tensor.py           :   109:        print(Tensor.rand(5).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)  # reset to the same seed
-tensor.py           :   109:        print(Tensor.rand(5).numpy())
-tensor.py           :   109:        print(Tensor.rand(5).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        Tensor._seed, Tensor._rng_counter = seed, Tensor([0], dtype=dtypes.uint32, requires_grad=False)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def rand(*shape, device:Optional[Union[Tuple[str, ...], str]]=None, dtype:Optional[DType]=None, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random values from a uniform distribution over the interval `[0, 1)`.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        t = Tensor.rand(2, 3)
-tensor.py           :   109:        print(t.numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        if Tensor._rng_counter is None: Tensor._rng_counter = Tensor([0], dtype=dtypes.uint32, requires_grad=False)
-tensor.py           :   109:        if not THREEFRY.value:
-tensor.py           :   109:          # for bfloat16, numpy rand passes buffer in float
-tensor.py           :   109:          if (dtype or dtypes.default_float) == dtypes.bfloat16:
-tensor.py           :   109:            return Tensor.rand(*shape, **kwargs, device=device, dtype=dtypes.float).cast(dtypes.bfloat16)
-tensor.py           :   109:          return Tensor._metaop(MetaOps.CUSTOM, argfix(*shape), arg=custom_random, device=device, dtype=dtype, **kwargs)
-tensor.py           :   109:        # threefry
-tensor.py           :   109:        if (num := prod((shape:=argfix(*shape)))) == 0: return Tensor.zeros(shape, device=device, dtype=dtype, **kwargs)
-tensor.py           :   109:        counts1 = (Tensor.arange(math.ceil(num / 2), device=device, dtype=dtypes.uint32, requires_grad=False)+Tensor._rng_counter.to(device)).realize()
-tensor.py           :   109:        counts2 = counts1 + math.ceil(num / 2)
-tensor.py           :   109:        Tensor._rng_counter.assign(Tensor._rng_counter + num).realize()
-tensor.py           :   109:        x = counts2.cast(dtypes.uint64) << 32 | counts1.cast(dtypes.uint64)
-tensor.py           :   109:        x = F.Threefry.apply(*x._broadcasted(Tensor._seed))
-tensor.py           :   109:        counts1, counts2 = (x & 0xffffffff).cast(dtypes.uint32), ((x >> 32) & 0xffffffff).cast(dtypes.uint32)
-tensor.py           :   109:        out = counts1.cat(counts2).rshift(8).cast(dtypes.float32).div(2 ** 24)[:num]
-tensor.py           :   109:        out = out.reshape(shape).cast(dtypes.default_float if dtype is None else dtype)
-tensor.py           :   109:        out.requires_grad = kwargs.get("requires_grad")
-tensor.py           :   109:        return out.contiguous()
-tensor.py           :   109:      # ***** creation helper functions *****
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def full(shape:Tuple[sint, ...], fill_value:ConstType, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with the given value.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.full((2, 3), 42).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.full((2, 3), False).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor(fill_value, **kwargs).reshape((1, )*len(new_shape := argfix(shape))).expand(new_shape)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def zeros(*shape, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with zeros.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.zeros(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.zeros(2, 3, dtype=dtypes.int32).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.full(argfix(*shape), 0.0, **kwargs)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def ones(*shape, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with ones.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.ones(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.ones(2, 3, dtype=dtypes.int32).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.full(argfix(*shape), 1.0, **kwargs)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def arange(start, stop=None, step=1, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns a 1-D tensor of size `ceil((stop - start) / step)` with values from `[start, stop)`, with spacing between values given by `step`.
-tensor.py           :   109:        If `stop` is not specified, values are generated from `[0, start)` with the given `step`.
-tensor.py           :   109:        If `stop` is specified, values are generated from `[start, stop)` with the given `step`.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.arange(5).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.arange(5, 10).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.arange(5, 10, 2).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.arange(5.5, 10, 2).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        if stop is None: stop, start = start, 0
-tensor.py           :   109:        assert all(isinstance(s, (int, float)) for s in (start, stop, step)), f"symbolic arange not supported {start=}, {stop=}, {step=}"
-tensor.py           :   109:        dtype = kwargs.pop("dtype", dtypes.default_float if any(isinstance(x, float) for x in (start, stop, step)) else dtypes.default_int)
-tensor.py           :   109:        return (Tensor.full((math.ceil((stop-start)/step),), step, dtype=dtype, **kwargs)._cumsum() + (start - step)).cast(dtype)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def eye(n:int, m:Optional[int]=None, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Returns a 2-D tensor with `n` rows and `m` columns, with ones on the diagonal and zeros elsewhere.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.eye(3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        print(Tensor.eye(2, 4).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.ones((n,1),**kwargs).pad((None,(0,n))).flatten().shrink(((0,n*n),)).reshape(n,n)._slice((None,(0,n if m is None else m)))
-tensor.py           :   109:      def full_like(self, fill_value:ConstType, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the same shape as `self`, filled with the given value.
-tensor.py           :   109:        If `dtype` is not specified, the dtype of `self` is used.
-tensor.py           :   109:        You can pass in the `device` keyword argument to control device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor.ones(2, 3)
-tensor.py           :   109:        print(Tensor.full_like(t, 42).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.full(self.shape, fill_value, dtype=kwargs.pop("dtype", self.dtype), device=kwargs.pop("device", self.device), **kwargs)
-tensor.py           :   109:      def zeros_like(self, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the same shape as `self`, filled with zeros.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor.ones(2, 3)
-tensor.py           :   109:        print(Tensor.zeros_like(t).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return self.full_like(0, **kwargs)
-tensor.py           :   109:      def ones_like(self, **kwargs):
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the same shape as `self`, filled with ones.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor.zeros(2, 3)
-tensor.py           :   109:        print(Tensor.ones_like(t).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return self.full_like(1, **kwargs)
-tensor.py           :   109:      # ***** rng hlops *****
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def randn(*shape, dtype:Optional[DType]=None, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random values from a normal distribution with mean `0` and standard deviation `1`.
-tensor.py           :   109:        If `dtype` is not specified, the default type is used.
-tensor.py           :   109:        You can pass in the `device` keyword argument to control device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.randn(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        # https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
-tensor.py           :   109:        src = Tensor.rand((2, *argfix(*shape)), **{**kwargs, "dtype": dtypes.float32})
-tensor.py           :   109:        return src[0].mul(2*math.pi).cos().mul((1 - src[1]).log().mul(-2).sqrt()).cast(dtype or dtypes.default_float)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def randint(*shape, low=0, high=10, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random integer values generated uniformly from the interval `[low, high)`.
-tensor.py           :   109:        If `dtype` is not specified, the default type is used.
-tensor.py           :   109:        You can pass in the `device` keyword argument to control device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.randint(2, 3, low=5, high=10).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        if not isinstance(low, int) or not isinstance(high, int): raise TypeError(f"{low=} and {high=} must be integers")
-tensor.py           :   109:        dtype = kwargs.pop("dtype", dtypes.int32)
-tensor.py           :   109:        if not dtypes.is_int(dtype): raise TypeError(f"{dtype=} must be int")
-tensor.py           :   109:        return Tensor.uniform(*shape, low=low, high=high, dtype=dtype, **kwargs)
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def normal(*shape, mean=0.0, std=1.0, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random values from a normal distribution with the given `mean` and standard deviation `std`.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.normal(2, 3, mean=10, std=2).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return (std * Tensor.randn(*shape, **kwargs)) + mean
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def uniform(*shape, low=0.0, high=1.0, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random values from a uniform distribution over the interval `[low, high)`.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.uniform(2, 3, low=2, high=10).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        dtype = kwargs.pop("dtype", dtypes.default_float)
-tensor.py           :   109:        return ((high-low) * Tensor.rand(*shape, **kwargs)).cast(dtype) + low
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def scaled_uniform(*shape, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Creates a tensor with the given shape, filled with random values from a uniform distribution
-tensor.py           :   109:        over the interval `[-prod(shape)**-0.5, prod(shape)**-0.5)`.
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.scaled_uniform(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.uniform(*shape, low=-1.0, high=1.0, **kwargs).mul(prod(argfix(*shape))**-0.5)
-tensor.py           :   109:      # https://www.tensorflow.org/api_docs/python/tf/keras/initializers/GlorotUniform
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def glorot_uniform(*shape, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        <https://www.tensorflow.org/api_docs/python/tf/keras/initializers/GlorotUniform>
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.glorot_uniform(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        return Tensor.uniform(*shape, low=-1.0, high=1.0, **kwargs).mul((6/(argfix(*shape)[0]+prod(argfix(*shape)[1:])))**0.5)
-tensor.py           :   109:      # https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def kaiming_uniform(*shape, a:float = 0.01, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        <https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_>
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.kaiming_uniform(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        bound = math.sqrt(3.0) * math.sqrt(2.0 / (1 + a ** 2)) / math.sqrt(prod(argfix(*shape)[1:]))
-tensor.py           :   109:        return Tensor.uniform(*shape, low=-bound, high=bound, **kwargs)
-tensor.py           :   109:      # https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_normal_
-tensor.py           :   109:      @staticmethod
-tensor.py           :   109:      def kaiming_normal(*shape, a:float = 0.01, **kwargs) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        <https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_normal_>
-tensor.py           :   109:        You can pass in `dtype` and `device` keyword arguments to control the data type and device of the tensor.
-tensor.py           :   109:        Additionally, all other keyword arguments are passed to the constructor of the tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        Tensor.manual_seed(42)
-tensor.py           :   109:        print(Tensor.kaiming_normal(2, 3).numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        std = math.sqrt(2.0 / (1 + a ** 2)) / math.sqrt(prod(argfix(*shape)[1:]))
-tensor.py           :   109:        return Tensor.normal(*shape, mean=0.0, std=std, **kwargs)
-tensor.py           :   109:      def multinomial(self:Tensor, num_samples:int = 1, replacement:bool = False) -> Tensor:
-tensor.py           :   109:        assert 1 <= self.ndim <= 2 and num_samples > 0, f"{self.ndim=} must be 1 or 2 dim, {num_samples=} must be positive"
-tensor.py           :   109:        assert replacement or num_samples == 1, "no replacement only supports num_samples = 1"
-tensor.py           :   109:        weight = self.unsqueeze(0) if self.ndim == 1 else self
-tensor.py           :   109:        cdf = (cw := weight.cumsum(1).float()) / cw[:, -1].unsqueeze(1)
-tensor.py           :   109:        unif_samples = Tensor.rand(num_samples, cdf.shape[0], 1, device=self.device)
-tensor.py           :   109:        indices = (unif_samples.expand((-1, -1, cdf.shape[1])) >= cdf).sum(2).permute((1, 0))
-tensor.py           :   109:        return (indices.squeeze(0) if self.ndim == 1 else indices).cast(dtypes.int32)
-tensor.py           :   109:      # ***** toposort and backward pass *****
-tensor.py           :   109:      def _deepwalk(self):
-tensor.py           :   109:        def _walk(node, visited):
-tensor.py           :   109:          visited.add(node)
-tensor.py           :   109:          if getattr(node, "_ctx", None):
-tensor.py           :   109:            for i in node._ctx.parents:
-tensor.py           :   109:              if i not in visited: yield from _walk(i, visited)
-tensor.py           :   109:            yield node
-tensor.py           :   109:        return list(_walk(self, set()))
-tensor.py           :   109:      def backward(self) -> Tensor:
-tensor.py           :   109:        """
-tensor.py           :   109:        Propagates the gradient of a tensor backwards through the computation graph.
-tensor.py           :   109:        Must be used on a scalar tensor.
-tensor.py           :   109:        ```python exec="true" source="above" session="tensor" result="python"
-tensor.py           :   109:        t = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
-tensor.py           :   109:        t.sum().backward()
-tensor.py           :   109:        print(t.grad.numpy())
-tensor.py           :   109:        ```
-tensor.py           :   109:        """
-tensor.py           :   109:        assert self.shape == tuple(), f"backward can only be called for scalar tensors, but it has shape {self.shape})"
-tensor.py           :   109:        # fill in the first grad with one. don't use Tensor.ones because we don't need contiguous
-tensor.py           :   109:        # this is "implicit gradient creation"
-tensor.py           :   109:        self.grad = Tensor(1.0, dtype=self.dtype, device=self.device, requires_grad=False)
-tensor.py           :   109:        for t0 in reversed(self._deepwalk()):
-tensor.py           :   109:          if t0.grad is None: raise RuntimeError(f"tensor {t0} has no grad")
-tensor.py           :   109:          token = _METADATA.set(dataclasses.replace(md, backward=True) if (md := t0._ctx.metadata) is not None else None)
-tensor.py           :   109:          grads = t0._ctx.backward(t0.grad.lazydata)
-tensor.py           :   109:          _METADATA.reset(token)
-tensor.py           :   109:          grads = [Tensor(g, device=self.device, requires_grad=False) if g is not None else None
+
+tensor.py           :    92:      class Tensor:
+tensor.py           :   154:        class train(ContextDecorator):
+
+tensor.py           :    92:      class Tensor:
+tensor.py           :   159:        class inference_mode(ContextDecorator):
+
+tensor.py           :   371:      _seed: int = int(time.time())
+tensor.py           :   372:      _rng_counter: Optional[Tensor] = None
 
 tensor.py           :  3123:  for device in Device._devices: setattr(Tensor, f"{device.lower()}", functools.partialmethod(Tensor.to, device))
 tensor.py           :  3125:  if IMAGE:
@@ -1681,6 +972,7 @@ nn/optim.py         :    46:      """
 nn/optim.py         :    67:    class LARS(Optimizer):
 nn/optim.py         :    68:      """
 nn/optim.py         :    68:      Layer-wise Adaptive Rate Scaling (LARS) optimizer with optional momentum and weight decay.
+nn/optim.py         :    68:    
 nn/optim.py         :    68:      - Described: https://paperswithcode.com/method/lars
 nn/optim.py         :    68:      - Paper: https://arxiv.org/abs/1708.03888v3
 nn/optim.py         :    68:      """
@@ -1688,6 +980,7 @@ nn/optim.py         :    68:      """
 nn/optim.py         :   119:    class LAMB(Optimizer):
 nn/optim.py         :   120:      """
 nn/optim.py         :   120:      LAMB optimizer with optional weight decay.
+nn/optim.py         :   120:    
 nn/optim.py         :   120:      - Described: https://paperswithcode.com/method/lamb
 nn/optim.py         :   120:      - Paper: https://arxiv.org/abs/1904.00962
 nn/optim.py         :   120:      """
@@ -1698,14 +991,18 @@ nn/state.py         :    11:  inverse_safe_dtypes = {v:k for k,v in safe_dtypes.
 nn/__init__.py      :     7:    class BatchNorm:
 nn/__init__.py      :     8:      """
 nn/__init__.py      :     8:      Applies Batch Normalization over a 2D or 3D input.
+nn/__init__.py      :     8:    
 nn/__init__.py      :     8:      - Described: https://paperswithcode.com/method/batch-normalization
 nn/__init__.py      :     8:      - Paper: https://arxiv.org/abs/1502.03167v3
+nn/__init__.py      :     8:    
 nn/__init__.py      :     8:      See: `Tensor.batchnorm`
+nn/__init__.py      :     8:    
 nn/__init__.py      :     8:      ```python exec="true" session="tensor"
 nn/__init__.py      :     8:      from tinygrad import Tensor, dtypes, nn
 nn/__init__.py      :     8:      import numpy as np
 nn/__init__.py      :     8:      np.set_printoptions(precision=4)
 nn/__init__.py      :     8:      ```
+nn/__init__.py      :     8:    
 nn/__init__.py      :     8:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :     8:      norm = nn.BatchNorm(3)
 nn/__init__.py      :     8:      t = Tensor.rand(2, 3, 4, 4)
@@ -1722,7 +1019,9 @@ nn/__init__.py      :    62:  BatchNorm2d = BatchNorm3d = BatchNorm
 nn/__init__.py      :    82:    class Conv2d:
 nn/__init__.py      :    83:      """
 nn/__init__.py      :    83:      Applies a 2D convolution over an input signal composed of several input planes.
+nn/__init__.py      :    83:    
 nn/__init__.py      :    83:      See: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d
+nn/__init__.py      :    83:    
 nn/__init__.py      :    83:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :    83:      conv = nn.Conv2d(1, 1, 3)
 nn/__init__.py      :    83:      t = Tensor.rand(1, 1, 4, 4)
@@ -1737,7 +1036,9 @@ nn/__init__.py      :    83:      """
 nn/__init__.py      :   126:    class ConvTranspose2d(Conv2d):
 nn/__init__.py      :   127:      """
 nn/__init__.py      :   127:      Applies a 2D transposed convolution operator over an input image.
+nn/__init__.py      :   127:    
 nn/__init__.py      :   127:      See: https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d
+nn/__init__.py      :   127:    
 nn/__init__.py      :   127:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   127:      conv = nn.ConvTranspose2d(1, 1, 3)
 nn/__init__.py      :   127:      t = Tensor.rand(1, 1, 4, 4)
@@ -1752,7 +1053,9 @@ nn/__init__.py      :   127:      """
 nn/__init__.py      :   152:    class Linear:
 nn/__init__.py      :   153:      """
 nn/__init__.py      :   153:      Applies a linear transformation to the incoming data.
+nn/__init__.py      :   153:    
 nn/__init__.py      :   153:      See: https://pytorch.org/docs/stable/generated/torch.nn.Linear
+nn/__init__.py      :   153:    
 nn/__init__.py      :   153:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   153:      lin = nn.Linear(3, 4)
 nn/__init__.py      :   153:      t = Tensor.rand(2, 3)
@@ -1767,8 +1070,10 @@ nn/__init__.py      :   153:      """
 nn/__init__.py      :   176:    class GroupNorm:
 nn/__init__.py      :   177:      """
 nn/__init__.py      :   177:      Applies Group Normalization over a mini-batch of inputs.
+nn/__init__.py      :   177:    
 nn/__init__.py      :   177:      - Described: https://paperswithcode.com/method/group-normalization
 nn/__init__.py      :   177:      - Paper: https://arxiv.org/abs/1803.08494v3
+nn/__init__.py      :   177:    
 nn/__init__.py      :   177:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   177:      norm = nn.GroupNorm(2, 12)
 nn/__init__.py      :   177:      t = Tensor.rand(2, 12, 4, 4) * 2 + 1
@@ -1783,8 +1088,10 @@ nn/__init__.py      :   177:      """
 nn/__init__.py      :   207:    class InstanceNorm:
 nn/__init__.py      :   208:      """
 nn/__init__.py      :   208:      Applies Instance Normalization over a mini-batch of inputs.
+nn/__init__.py      :   208:    
 nn/__init__.py      :   208:      - Described: https://paperswithcode.com/method/instance-normalization
 nn/__init__.py      :   208:      - Paper: https://arxiv.org/abs/1607.08022v3
+nn/__init__.py      :   208:    
 nn/__init__.py      :   208:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   208:      norm = nn.InstanceNorm(3)
 nn/__init__.py      :   208:      t = Tensor.rand(2, 3, 4, 4) * 2 + 1
@@ -1799,8 +1106,10 @@ nn/__init__.py      :   208:      """
 nn/__init__.py      :   234:    class LayerNorm:
 nn/__init__.py      :   235:      """
 nn/__init__.py      :   235:      Applies Layer Normalization over a mini-batch of inputs.
+nn/__init__.py      :   235:    
 nn/__init__.py      :   235:      - Described: https://paperswithcode.com/method/layer-normalization
 nn/__init__.py      :   235:      - Paper: https://arxiv.org/abs/1607.06450v1
+nn/__init__.py      :   235:    
 nn/__init__.py      :   235:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   235:      norm = nn.LayerNorm(3)
 nn/__init__.py      :   235:      t = Tensor.rand(2, 5, 3) * 2 + 1
@@ -1815,7 +1124,9 @@ nn/__init__.py      :   235:      """
 nn/__init__.py      :   262:    class LayerNorm2d(LayerNorm):
 nn/__init__.py      :   263:      """
 nn/__init__.py      :   263:      Applies Layer Normalization over a mini-batch of 2D inputs.
+nn/__init__.py      :   263:    
 nn/__init__.py      :   263:      See: `LayerNorm`
+nn/__init__.py      :   263:    
 nn/__init__.py      :   263:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   263:      norm = nn.LayerNorm2d(3)
 nn/__init__.py      :   263:      t = Tensor.rand(2, 3, 4, 4) * 2 + 1
@@ -1830,8 +1141,10 @@ nn/__init__.py      :   263:      """
 nn/__init__.py      :   280:    class RMSNorm:
 nn/__init__.py      :   281:      """
 nn/__init__.py      :   281:      Applies Root Mean Square Normalization to input.
+nn/__init__.py      :   281:    
 nn/__init__.py      :   281:      - Described: https://paperswithcode.com/method/rmsnorm
 nn/__init__.py      :   281:      - Paper: https://arxiv.org/abs/1910.07467
+nn/__init__.py      :   281:    
 nn/__init__.py      :   281:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   281:      norm = nn.RMSNorm(4)
 nn/__init__.py      :   281:      t = Tensor.arange(12, dtype=dtypes.float).reshape(3, 4)
@@ -1845,7 +1158,9 @@ nn/__init__.py      :   281:      """
 nn/__init__.py      :   302:    class Embedding:
 nn/__init__.py      :   303:      """
 nn/__init__.py      :   303:      A simple lookup table that stores embeddings of a fixed dictionary and size.
+nn/__init__.py      :   303:    
 nn/__init__.py      :   303:      See: https://pytorch.org/docs/stable/generated/torch.nn.Embedding
+nn/__init__.py      :   303:    
 nn/__init__.py      :   303:      ```python exec="true" source="above" session="tensor" result="python"
 nn/__init__.py      :   303:      emb = nn.Embedding(10, 3)
 nn/__init__.py      :   303:      print(emb(Tensor([1, 2, 3, 1])).numpy())
