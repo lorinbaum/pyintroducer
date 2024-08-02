@@ -8,8 +8,6 @@ from io import BytesIO
 
 # TODO: print existing function definition when taking a different path through it. annotate whats different, note if its complete
     # get complete definitions in preprocessing
-# TODO: don't reintroduce just introduced parents
-    # store lastintroduced parent
 # TODO: following function calls UOp.const for the first time. the functions definition is skipped.
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
@@ -33,9 +31,11 @@ class Tracer():
         self.parents = []
         # stores parents of the current line when tracing through line events, so that encountered functions and classes can get them assigned
         # self.prospectiveParents:List[Dict[str:str, str:int]] = []
-        self.parentsIntroduced = False
+        self.parentsIntroduced:bool = False
         # class parents that contain nothing but class or function definitions and docstrings
         self.unacceptableParents = []
+        # dynamic list of currently introduced parents. older -> young
+        self.introduced:List[str] = []
 
         self.indent = 0
 
@@ -86,7 +86,6 @@ class Tracer():
                     lines.strip().startswith("class "), lines.strip().startswith("def "), lines.strip().startswith("@"),
                     lines.strip().startswith('"""'), lines.strip().startswith("'''"), lines.strip() == ''
                 ]) and len(prospectiveParents) and prospectiveParents[-1]["class"]:
-                    # TODO: make it acceptable, if the class is only one line and does not have "pass" after its declaration
                     prospectiveParents[-1]["acceptable"] = True
                 if lines.strip().startswith("def ") or lines.strip().startswith("class "):
                     cl = lines.strip().startswith("class ")
@@ -161,10 +160,16 @@ class Tracer():
 
     def introduceParents(self):
         if self.parentsIntroduced or self.parents[-1] in self.unacceptableParents: return
-        parents = [self.parents[-1]] + self.lexicon[self.parents[-1]]["parents"]
+        parents = self.lexicon[self.parents[-1]]["parents"][::-1] + [self.parents[-1]] # order is old -> young
+        newParents = []
+        for i, p in enumerate(parents):
+            if p not in self.introduced:
+                newParents = parents[i:]
+                break
         self.singleSpace(force = True)
-        if linecache.getline(self.parents[-1].split(":")[0], int(self.parents[-1].split(":")[1])).strip().startswith("def "): self.output_file.write(f"{' ' * 28}{'  ' * self.indent}# introducing:\n")
-        for p in parents[::-1]:
+        if self.introduced and self.introduced[0] not in parents: self.output_file.write(f"{'  ' * self.indent}# introducing:\n")
+        self.introduced = parents
+        for p in newParents:
             lines = self.getFullParent(*p.split(":"))
             self.write(p.split(":")[0], int(p.split(":")[1]), lines)
         self.spaced = False
@@ -172,10 +177,15 @@ class Tracer():
 
     def write(self, filename:str, lineno:int, lines:Union[str, List[str]]):
         filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
-        if len(filename_short) > 20: filename_short = f"...{filename_short[-17:]}"
+        if len(filename_short) > 30: filename_short = f"...{filename_short[-27:]}"
         if not isinstance(lines, list): lines = [lines]
+        lineinfo = False
         for ln in lines:
-            self.output_file.write(f"{filename_short:20}:{lineno:6}:  {'  ' * self.indent}{ln}")
+            if not lineinfo:
+                outLine = f"{'  ' * self.indent}{ln.rstrip():{200 - self.indent * 2}} # {filename_short}:{lineno}\n"
+                lineinfo = True
+            else: outLine = f"{'  ' * self.indent}{ln}"
+            self.output_file.write(outLine)
         self.lines[filename].append(lineno)
         self.trueSpaced = False
 
@@ -227,15 +237,16 @@ class Tracer():
                                 line.strip().startswith("import ")
                             ]):
                                 if self.parents:
-                                    if lineno not in self.lexicon[self.parents[-1]]["lines"] and self.parents[-1] not in self.unacceptableParents:
-                                        self.lexicon[self.parents[-1]]["lines"].append(lineno)
-                                        if line.strip().startswith("def ") or line.strip().startswith("class "):
-                                            if f"{filename}:{lineno}" == self.parents[-1]:
+                                    if int(self.parents[-1].split(":")[1]) not in self.skipmultilines[self.parents[-1].split(":")[0]]:
+                                        if lineno not in self.lexicon[self.parents[-1]]["lines"] and self.parents[-1] not in self.unacceptableParents:
+                                            self.lexicon[self.parents[-1]]["lines"].append(lineno)
+                                            if line.strip().startswith("def ") or line.strip().startswith("class "):
+                                                if f"{filename}:{lineno}" == self.parents[-1]:
+                                                    self.introduceParents()
+                                            else:
                                                 self.introduceParents()
-                                        else:
-                                            self.introduceParents()
-                                            self.write(filename, lineno, [line, *multilines])
-                                            self.spaced = False
+                                                self.write(filename, lineno, [line, *multilines])
+                                                self.spaced = False
                                 elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
                                     self.write(filename, lineno, [line, *multilines])
 
@@ -253,3 +264,18 @@ sys.settrace(None)
 
 tracer.output_file.close()
 print(f"introduction written to {output_path:30}")
+
+
+"""
+- dtypes class is not printing even though its acceptable
+- not introducing correctly, skips the inner function entirely
+    def hook_overflow(dv, fxn):
+        def wfxn(*args):
+            try: return fxn(*args)
+            except OverflowError: return dv
+    return wfxn
+- callables as arguments are not introduced, like fold_expanded in float4_folding PatternMatcher
+- indentation should really be correct when introducing. check indent of previous line and add that to the new one, so I know where it resumes when it does
+- for better highlighting and indentation linese should print file and line as a comment at the end of the line at minimum distance, else just append.
+- should be able to see how if statements evaluate
+"""
