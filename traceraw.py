@@ -1,5 +1,6 @@
 import sys
 import linecache
+import runpy
 
 class Tracer():
     def __init__(self):
@@ -11,7 +12,7 @@ class Tracer():
         lineno = frame.f_lineno
         line = linecache.getline(filename, lineno)
         if line != "" and \
-        "python3.10" not in filename:
+        "python3" not in filename:
             if event == "call":
                 self.execlines.append(f"call: {line}")
             if event == "return":
@@ -28,7 +29,7 @@ with open(script_path, "r") as script_file:
     script = script_file.read()
 
 sys.settrace(tracer.trace_dispatch)
-exec(script)
+runpy.run_path(script_path, run_name="__main__")
 sys.settrace(None)
 
 output_path = f"{script_path}_trace.txt"
