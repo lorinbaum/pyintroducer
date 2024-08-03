@@ -28,18 +28,27 @@ class Tracer():
         # stores filepaths of file that ran through self.preprocess
         self.processedFiles = []
         # stores current filename:lineno on a call event (def or class statement), so following lines can find their parents easily
-        self.parents = []
+        # self.parents = []
         # stores parents of the current line when tracing through line events, so that encountered functions and classes can get them assigned
         # self.prospectiveParents:List[Dict[str:str, str:int]] = []
         self.parentsIntroduced:bool = False
         # class parents that contain nothing but class or function definitions and docstrings
         self.unacceptableParents = []
-        # dynamic list of currently introduced parents. older -> young
-        self.introduced:List[str] = []
+        # dynamic list of currently introduced parents. old -> young
+        # self.introduced:List[str] = []
 
         self.indent = 0
+        # stores inherent indent of current line, pyintroducers indent ignored.
+        # calls from any such additional indent should consider it when introduced to be sure to differentiate themselves
+        self.lastIndent = 0
 
         self.spaced = True # beginning of line
+
+        # introduced stores introduced parents in the current call
+        self.callStack:List[Dict["name":str, "type": str, "indent": int, "lastIndent": int, "introduced": List[str]]] = []
+
+        # config
+        self.tabsize = 2
 
 
     def preprocess(self, filename:str):
@@ -159,33 +168,41 @@ class Tracer():
         return fullParent[::-1]
 
     def introduceParents(self):
-        if self.parentsIntroduced or self.parents[-1] in self.unacceptableParents: return
-        parents = self.lexicon[self.parents[-1]]["parents"][::-1] + [self.parents[-1]] # order is old -> young
+        parent = self.callStack[-1]["name"]
+        parents = self.lexicon[parent]["parents"][::-1] + [parent] # order is old -> young
         newParents = []
         for i, p in enumerate(parents):
-            if p not in self.introduced:
+            if p not in self.callStack[-1]["introduced"]:
                 newParents = parents[i:]
                 break
-        self.singleSpace(force = True)
-        if self.introduced and self.introduced[0] not in parents: self.output_file.write(f"{'  ' * self.indent}# introducing:\n")
-        self.introduced = parents
-        for p in newParents:
-            lines = self.getFullParent(*p.split(":"))
-            self.write(p.split(":")[0], int(p.split(":")[1]), lines)
-        self.spaced = False
-        self.parentsIntroduced = True
+        if newParents:
+            self.singleSpace(force = True)
+            # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
+            if not self.callStack[-1]["type"].startswith("class") and self.callStack[-2]:
+                # if there are any skipped parents, their children will still carry their natural indent, which should be  removed?
+                self.callStack[-1]["indent"] += 1 + self.callStack[-2]["lastIndent"]# - skipIndent
+            if self.callStack[-1]["introduced"] and self.callStack[-1]["introduced"][0] not in parents:
+                if linecache.getline(parent.split(":")[0], int(parent.split(":")[1])).strip().startswith("def "):
+                    self.output_file.write(f"{'  ' * self.callStack[-1]['indent']}# introducing:\n")
+            self.callStack[-1]["introduced"] = parents
+            for p in newParents:
+                lines = self.getFullParent(*p.split(":"))
+                self.write(p.split(":")[0], int(p.split(":")[1]), lines)
+            self.spaced = False
 
     def write(self, filename:str, lineno:int, lines:Union[str, List[str]]):
         filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
         if len(filename_short) > 30: filename_short = f"...{filename_short[-27:]}"
         if not isinstance(lines, list): lines = [lines]
         lineinfo = False
+        indent = self.callStack[-1]["indent"]
         for ln in lines:
             if not lineinfo:
-                outLine = f"{'  ' * self.indent}{ln.rstrip():{200 - self.indent * 2}} # {filename_short}:{lineno}\n"
+                outLine = f"{'  ' * indent}{ln.rstrip():{200 - indent * self.tabsize}} # {filename_short}:{lineno}\n" # fails if indent > 100
                 lineinfo = True
-            else: outLine = f"{'  ' * self.indent}{ln}"
+            else: outLine = f"{'  ' * indent}{ln}"
             self.output_file.write(outLine)
+        self.callStack[-1]["lastIndent"] = int(len(whitespace) / self.tabsize) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0
         self.lines[filename].append(lineno)
         self.trueSpaced = False
 
@@ -201,52 +218,44 @@ class Tracer():
                     filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
                     print(f"{filename_short:40}:{lineno:6}", end="\r")
                     if event == "call":
-                        if not any([
-                            line.strip().startswith("from "),
-                            line.strip().startswith("#")
-                        ]):
-                            # if call, append to parents "call stack". current parent is latest in there
-                            # if return, pop off latest parent
-                            # only print def and class lines if they are identical to the current parent
-                            if line.strip().startswith("@"):
-                                while line.strip().startswith("@"):
-                                    line, multilines = self.advance(filename, lineno, 1)
-                                    lineno = lineno + 1 + len(multilines)
-                            if line.strip().startswith("def ") or line.strip().startswith("class "):
-                                self.parentsIntroduced = False
-                                self.parents.append(f"{filename}:{lineno}")
-                                self.indent += 1
+                        if line.strip().startswith("@"):
+                            while line.strip().startswith("@"):
+                                line, multilines = self.advance(filename, lineno, 1)
+                                lineno = lineno + 1 + len(multilines)
+                        
+                        indent = self.callStack[-1]["indent"] if self.callStack else 0
+                        self.callStack.append({"name": f"{filename}:{lineno}", "type": line.strip()[:5], "indent": indent, "lastIndent": 0, "introduced": []})
                     elif event == "return":
-                        # some calls are not the ones I want, like import lines (or comments!?) which aren't considered for parents
-                        # the returns that weren't accounted for happen at end of lines and self.parents will be empty
-                        if len(self.parents):
-                            self.indent = max(self.indent - 1, 0)
-                            self.parents.pop()
-                        self.singleSpace()
+                        if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"): self.singleSpace()
+                        self.callStack.pop()
                     elif event == "line" and line.strip() != "":
                         """
                         consider the line only if it is not multiline or first line in multiline statement
                         """
                         if lineno not in self.lines[filename]:
-                            if filename == script_path:
-                                self.write(filename, lineno, [line, *multilines])
-                                self.spaced = False
-                            if not any([
-                                line.strip().startswith("@"),
-                                line.strip().startswith("from "),
-                                line.strip().startswith("import ")
-                            ]):
-                                if self.parents:
-                                    if int(self.parents[-1].split(":")[1]) not in self.skipmultilines[self.parents[-1].split(":")[0]]:
-                                        if lineno not in self.lexicon[self.parents[-1]]["lines"] and self.parents[-1] not in self.unacceptableParents:
-                                            self.lexicon[self.parents[-1]]["lines"].append(lineno)
-                                            if line.strip().startswith("def ") or line.strip().startswith("class "):
-                                                if f"{filename}:{lineno}" == self.parents[-1]:
+                            if not line.strip().startswith("@") or filename == script_path:
+                                if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"):
+                                    parent = self.callStack[-1]["name"]
+                                    if int(parent.split(":")[1]) not in self.skipmultilines[parent.split(":")[0]]:
+                                        if lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
+                                            # if self.lexicon[self.parents[-1]]["lines"]: pass
+                                                # print(self.lexicon[self.parents[-1]]['lines'])
+                                                # its taking a different path in an introduced function
+                                                # if the function is currently already introduced
+                                                    # max(lines) < lineno
+                                                        # add the new line
+                                                    # reintroduce the function and note what is happening
+                                                # reintroduced the function
+                                                # print the previous definition unless
+                                            # else: 
+                                                self.lexicon[parent]["lines"].append(lineno)
+                                                if line.strip().startswith("def ") or line.strip().startswith("class "):
+                                                    if f"{filename}:{lineno}" == parent:
+                                                        self.introduceParents()
+                                                else:
                                                     self.introduceParents()
-                                            else:
-                                                self.introduceParents()
-                                                self.write(filename, lineno, [line, *multilines])
-                                                self.spaced = False
+                                                    self.write(filename, lineno, [line, *multilines])
+                                                    self.spaced = False
                                 elif not line.strip().startswith("def ") and not line.strip().startswith("class "):
                                     self.write(filename, lineno, [line, *multilines])
 
@@ -275,7 +284,5 @@ print(f"introduction written to {output_path:30}")
             except OverflowError: return dv
     return wfxn
 - callables as arguments are not introduced, like fold_expanded in float4_folding PatternMatcher
-- indentation should really be correct when introducing. check indent of previous line and add that to the new one, so I know where it resumes when it does
-- for better highlighting and indentation linese should print file and line as a comment at the end of the line at minimum distance, else just append.
 - should be able to see how if statements evaluate
 """
