@@ -735,8 +735,6 @@ class Renderer:                                                                 
   shared_max: int = 32768                                                                                                                                                                                # renderer/__init__.py:56
   tensor_cores: List[TensorCore] = []                                                                                                                                                                    # renderer/__init__.py:57
 
-class _Device:                                                                                                                                                                                           # device.py:13
-
 Device = _Device()                                                                                                                                                                                       # device.py:41
 
   class _Device:                                                                                                                                                                                         # device.py:13
@@ -749,8 +747,6 @@ class BufferOptions:
   cpu_access: bool = False                                                                                                                                                                               # device.py:49
   host: bool = False                                                                                                                                                                                     # device.py:50
   nolru: bool = False                                                                                                                                                                                    # device.py:51
-
-class _MallocAllocator(LRUAllocator):                                                                                                                                                                    # device.py:164
 
 MallocAllocator = _MallocAllocator()                                                                                                                                                                     # device.py:171
 
@@ -848,6 +844,9 @@ class TensorCoreOptions:
   axes_exist: Tuple[bool, ...] # true if the original N and M axes are still in the shape                                                                                                                # codegen/kernel.py:46
   axis_pads: Tuple[Tuple[int, int], ...]                                                                                                                                                                 # codegen/kernel.py:47
 
+class Kernel:                                                                                                                                                                                            # codegen/kernel.py:55
+  kernel_cnt: Final[DefaultDict[str, int]] = defaultdict(int)                                                                                                                                            # codegen/kernel.py:621
+
 from tinygrad.engine.schedule import ScheduleItem                                                                                                                                                        # engine/realize.py:11
 import sys, pickle, atexit                                                                                                                                                                               # engine/schedule.py:1
 from collections import defaultdict, deque                                                                                                                                                               # engine/schedule.py:2
@@ -895,8 +894,6 @@ class ScheduleItem:
 SCHEDULES: List = []                                                                                                                                                                                     # engine/schedule.py:321
 logkerns, logkerns_level = open(getenv("LOGKERNS", ""), "a") if getenv("LOGKERNS", "") else None, getenv("LOGKERNS_LEVEL", 1)                                                                            # engine/realize.py:15
 
-class BufferXfer(BufferCopy):                                                                                                                                                                            # engine/realize.py:143
-
 method_cache: Dict[Tuple[str, LazyOp, int, bool], CompiledRunner] = {}                                                                                                                                   # engine/realize.py:152
 
 @dataclass(frozen=True)                                                                                                                                                                                  # engine/realize.py:170
@@ -918,10 +915,6 @@ from tinygrad.ops import UnaryOps, BinaryOps, TernaryOps, ReduceOps             
 from tinygrad.tensor import Function                                                                                                                                                                     # function.py:7
 from tinygrad.lazy import LazyBuffer                                                                                                                                                                     # function.py:8
 from tinygrad.shape.symbolic import sint                                                                                                                                                                 # function.py:9
-
-class Sqrt(Function):                                                                                                                                                                                    # function.py:70
-
-class Max(Function):                                                                                                                                                                                     # function.py:164
 
 class Tensor:                                                                                                                                                                                            # tensor.py:92
   """                                                                                                                                                                                                    # tensor.py:93

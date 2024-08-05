@@ -14,6 +14,7 @@ from io import BytesIO
             # get any lines between current lineno and previous line from callStack[-1]["lines"]
             # print those lines
         # print new line and add NEW to end of line before filename:lineno
+        # if this completes the new function, append a line saying so.
 # TODO: removet the newParents garbage. since callstack paradigm, there is only one stack of parents per call
 # TODO: following function calls UOp.const for the first time. the functions definition is skipped.
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
@@ -58,9 +59,18 @@ class Tracer():
         if filename in self.processedFiles: return
         self.processedFiles.append(filename)
         self.skipmultilines[filename] = []
-        def judgeParent():
-            if currentParents and not currentParents[-1]["acceptable"] and currentParents[-1]["class"]:
-                self.unacceptableParents.append(currentParents[-1]["name"])
+        def farewell():
+            """
+            pops a parent off currentParents,
+            blacklists if if its unacceptable,
+            adds it to self.lexicon
+            """
+            bye = currentParents.pop()
+            if not bye["acceptable"] and bye["class"]:
+                self.unacceptableParents.append(bye["name"])
+            
+            if bye["name"] not in self.lexicon: self.lexicon[bye["name"]] = {"parents": [p["name"] for p in currentParents], "lines": [], "fullDef": bye["lines"]}
+
         with open(filename, "r") as f:
             lineno = 0
             baselineno = 1
@@ -69,9 +79,7 @@ class Tracer():
             while True:
                 lineno += 1
                 if lines == "":
-                    while currentParents:
-                        judgeParent()
-                        currentParents.pop()
+                    while currentParents: farewell()
                     break
                 # process multilines
                 try:
@@ -82,39 +90,24 @@ class Tracer():
                         lines += f.readline()
                         continue
                     else: raise(e)
-                # from here lines is always a full logical line including multilines if any.
+                # from here on lines is always a full logical line including multilines if any.
                 # process parents
-                if (linesS := lines.strip()) != "":
+                linesS = lines.strip()
+                if linesS != "":
                     if not any([
                         linesS.startswith("class "), linesS.startswith("def "), linesS.startswith("@"),
-                        linesS.startswith('"""'), linesS.startswith("'''")
+                        linesS.startswith('"""'), linesS.startswith("'''"), linesS.startswith("#")
                     ]) and currentParents and currentParents[-1]["class"]:
                         currentParents[-1]["acceptable"] = True
+                    indent = len(whitespace) if (whitespace:=re.search("^(\s*)", lines)[1]) else 0
+                    while currentParents and indent <= currentParents[-1]["indent"]: farewell()
                     if (cl := linesS.startswith("class ")) or linesS.startswith("def "):
                         classline = linesS.split("\n")[0].split("#")[0].strip() 
                         acceptable = False if not cl or classline.endswith(":") or classline.endswith("pass") else True
-                        indent = len(whitespace) if (whitespace:=re.search("^(\s*)", lines)[1]) else 0
-                        assert indent >= 0
-                        if not currentParents: currentParents = [{"name": f"{filename}:{baselineno}", "indent": 0, "class":cl, "acceptable": acceptable}]
-                        else:
-                            if indent > currentParents[-1]["indent"]:
-                                currentParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable})
-                            elif indent == currentParents[-1]["indent"]:
-                                judgeParent()
-                                currentParents[-1] = {"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable}
-                            else:
-                                while currentParents and indent <= currentParents[-1]["indent"]:
-                                    judgeParent()
-                                    currentParents.pop()
-                                currentParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable})
-                        if (key := f"{filename}:{baselineno}") not in self.lexicon: self.lexicon[key] = {"parents": [p["name"] for p in currentParents[:-1]], "lines": []}
-                    elif currentParents:
-                        # line not def or class but could still indicate a previous parent ended
-                        indent = len(whitespace) if (whitespace:=re.search("^(\s*)", lines)[1]) else 0
-                        while indent < currentParents[-1]["indent"]:
-                            judgeParent()
-                            currentParents.pop()
+                        currentParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable, "lines": []})
 
+                    if currentParents and not any([linesS.startswith("class "), linesS.startswith("def "), linesS.startswith("@")]) and not currentParents[-1]["class"]:
+                        currentParents[-1]["lines"].append(baselineno)
                 
                 baselineno = lineno + 1
                 lines = f.readline()
@@ -182,7 +175,7 @@ class Tracer():
             # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
             if not self.callStack[-1]["type"].startswith("class") and self.callStack[-2]:
                 self.callStack[-1]["indent"] += 1 + self.callStack[-2]["lastIndent"]
-            if self.callStack[-1]["introduced"] and self.callStack[-1]["introduced"][0] not in parents: # not working
+            if self.callStack[-1]["introduced"] and self.callStack[-1]["introduced"][0] not in parents: # not working?
                 if linecache.getline(parent.split(":")[0], int(parent.split(":")[1])).strip().startswith("def "):
                     self.output_file.write(f"{'  ' * self.callStack[-1]['indent']}# introducing:\n")
             self.callStack[-1]["introduced"] = parents
@@ -231,7 +224,6 @@ class Tracer():
                         if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"): self.singleSpace()
                         self.callStack.pop()
                     elif event == "line" and line.strip() != "":
-                        # consider the line only if it is not multiline or first line in multiline statement
                         if lineno not in self.lines[filename]:
                             if not line.strip().startswith("@") or filename == script_path:
                                 if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"):
@@ -248,6 +240,7 @@ class Tracer():
                                                 # reintroduced the function
                                                 # print the previous definition unless
                                             # else: 
+                                            # NOTE: if parent is a class, function definition lines when printed will be in its lines list
                                                 self.lexicon[parent]["lines"].append(lineno)
                                                 if line.strip().startswith("def ") or line.strip().startswith("class "):
                                                     if f"{filename}:{lineno}" == parent:
