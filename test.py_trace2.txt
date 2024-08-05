@@ -45,12 +45,17 @@ DEBUG, IMAGE, BEAM, NOOPT, JIT = ContextVar("DEBUG", 0), ContextVar("IMAGE", 0),
       return instance                                                                                                                                                                                    # helpers.py:99
 
 WINO, THREEFRY, CAPTURING, TRACEMETA = ContextVar("WINO", 0), ContextVar("THREEFRY", 0), ContextVar("CAPTURING", 1), ContextVar("TRACEMETA", 1)                                                          # helpers.py:106
+
 GRAPH, GRAPHPATH, SAVE_SCHEDULE, RING = ContextVar("GRAPH", 0), getenv("GRAPHPATH", "/tmp/net"), ContextVar("SAVE_SCHEDULE", 0), ContextVar("RING", 1)                                                   # helpers.py:107
+
 MULTIOUTPUT, PROFILE, PROFILEPATH = ContextVar("MULTIOUTPUT", 1), ContextVar("PROFILE", 0), ContextVar("PROFILEPATH", temp("tinygrad_profile.json"))                                                     # helpers.py:108
+
   def temp(x:str) -> str: return (pathlib.Path(tempfile.gettempdir()) / x).as_posix()                                                                                                                    # helpers.py:79
 
 USE_TC, TC_OPT, TRANSCENDENTAL = ContextVar("TC", 1), ContextVar("TC_OPT", 0), ContextVar("TRANSCENDENTAL", 1)                                                                                           # helpers.py:109
+
 FUSE_AS_ONE_KERNEL, FUSE_CONV_BW = ContextVar("FUSE_AS_ONE_KERNEL", 0), ContextVar("FUSE_CONV_BW", 0)                                                                                                    # helpers.py:110
+
 @dataclass(frozen=True)                                                                                                                                                                                  # helpers.py:113
 class Metadata:
   name: str                                                                                                                                                                                              # helpers.py:114
@@ -73,11 +78,15 @@ class ProfileLogger:                                                            
   subactors: Dict[Tuple[str, str], int] = {}                                                                                                                                                             # helpers.py:165
 
 _cache_dir: str = getenv("XDG_CACHE_HOME", os.path.expanduser("~/Library/Caches" if OSX else "~/.cache"))                                                                                                # helpers.py:190
+
 CACHEDB: str = getenv("CACHEDB", os.path.abspath(os.path.join(_cache_dir, "tinygrad", "cache.db")))                                                                                                      # helpers.py:191
+
 CACHELEVEL = getenv("CACHELEVEL", 2)                                                                                                                                                                     # helpers.py:192
+
 VERSION = 16                                                                                                                                                                                             # helpers.py:194
 _db_connection = None                                                                                                                                                                                    # helpers.py:195
 _db_tables = set()                                                                                                                                                                                       # helpers.py:222
+
 ConstType = Union[float, int, bool]                                                                                                                                                                      # dtype.py:6
 
 @dataclass(frozen=True, order=True)                                                                                                                                                                      # dtype.py:9
@@ -94,7 +103,29 @@ class ImageDType(DType):
   shape: Tuple[int, ...]   # arbitrary arg for the dtype, used in image for the shape                                                                                                                    # dtype.py:24
   base: DType                                                                                                                                                                                            # dtype.py:25
 
+class dtypes:                                                                                                                                                                                            # dtype.py:38
+  bigint: Final[DType] = DType(-1, 0, "bigint", None, 1)   # arbitrary precision integer                                                                                                                 # dtype.py:65
+  bool: Final[DType] = DType(0, 1, "bool", '?', 1)                                                                                                                                                       # dtype.py:66
+  int8: Final[DType] = DType(1, 1, "char", 'b', 1)                                                                                                                                                       # dtype.py:67
+  uint8: Final[DType] = DType(2, 1, "unsigned char", 'B', 1)                                                                                                                                             # dtype.py:68
+  int16: Final[DType] = DType(3, 2, "short", 'h', 1)                                                                                                                                                     # dtype.py:69
+  uint16: Final[DType] = DType(4, 2, "unsigned short", 'H', 1)                                                                                                                                           # dtype.py:70
+  int32: Final[DType] = DType(5, 4, "int", 'i', 1)                                                                                                                                                       # dtype.py:71
+  uint32: Final[DType] = DType(6, 4, "unsigned int", 'I', 1)                                                                                                                                             # dtype.py:72
+  int64: Final[DType] = DType(7, 8, "long", 'l', 1)                                                                                                                                                      # dtype.py:73
+  uint64: Final[DType] = DType(8, 8, "unsigned long", 'L', 1)                                                                                                                                            # dtype.py:74
+  float16: Final[DType] = DType(9, 2, "half", 'e', 1)                                                                                                                                                    # dtype.py:75
+  bfloat16: Final[DType] = DType(10, 2, "__bf16", None, 1)                                                                                                                                               # dtype.py:77
+  float32: Final[DType] = DType(11, 4, "float", 'f', 1)                                                                                                                                                  # dtype.py:78
+  float64: Final[DType] = DType(12, 8, "double", 'd', 1)                                                                                                                                                 # dtype.py:79
+  half = float16; float = float32; double = float64 # noqa: E702                                                                                                                                         # dtype.py:82
+  uchar = uint8; ushort = uint16; uint = uint32; ulong = uint64 # noqa: E702                                                                                                                             # dtype.py:83
+  char = int8; short = int16; int = int32; long = int64 # noqa: E702                                                                                                                                     # dtype.py:84
+  default_float: ClassVar[DType] = float32                                                                                                                                                               # dtype.py:92
+  default_int: ClassVar[DType] = int32                                                                                                                                                                   # dtype.py:93
+
 if (env_default_float := getenv("DEFAULT_FLOAT", "")):                                                                                                                                                   # dtype.py:95
+
 promo_lattice = { dtypes.bool: [dtypes.int8, dtypes.uint8], dtypes.int8: [dtypes.int16], dtypes.int16: [dtypes.int32], dtypes.int32: [dtypes.int64],                                                     # dtype.py:101
   dtypes.int64: [dtypes.float16, dtypes.bfloat16], dtypes.uint8: [dtypes.int16, dtypes.uint16], dtypes.uint16: [dtypes.int32, dtypes.uint32],
   dtypes.uint32: [dtypes.int64, dtypes.uint64], dtypes.uint64: [dtypes.float16, dtypes.bfloat16],
@@ -342,6 +373,7 @@ float4_folding = PatternMatcher([                                               
 
 transcendental_folding = PatternMatcher([(UPat(UOps.ALU, dtype=TRANSCENDENTAL_SUPPORTED_DTYPES, src=(UPat(name="d"),), arg=k), cast(Callable, v))                                                        # codegen/uopgraph.py:81
                                          for k,v in ((UnaryOps.EXP2, xexp2), (UnaryOps.LOG2, xlog2), (UnaryOps.SIN, xsin))])
+
 constant_folder = PatternMatcher([                                                                                                                                                                       # codegen/uopgraph.py:132
   # bigint is rewritten to int32
   (UPat({UOps.CONST, UOps.ALU, UOps.SPECIAL, UOps.RANGE, UOps.EXPAND}, dtype=dtypes.bigint, name="x"),
@@ -505,6 +537,7 @@ constant_folder = PatternMatcher([                                              
   (UPat(UOps.ALU, BinaryOps.ADD, src=(UPat(UOps.ALU, BinaryOps.ADD, src=(UPat(name='x'), UPat(UOps.CONST, name='c1'))), UPat(name='y'))),
     lambda x,c1,y: (x+y)+c1),
 ])
+
   @dataclass(frozen=True, order=True)                                                                                                                                                                    # dtype.py:9
   class DType:
     def vec(self, sz:int):                                                                                                                                                                               # dtype.py:16
@@ -658,6 +691,7 @@ expander = PatternMatcher([                                                     
   # empty EXPAND is NOOP
   (NOp(UOps.EXPAND, src=(NOp.var('x'),), arg=()), lambda x: x),
 ])
+
 reducer = PatternMatcher([                                                                                                                                                                               # codegen/uopgraph.py:424
   (NOp(UOps.REDUCE, name="root"), do_reduce_with_expand),
   # no ALU on vectorized dtypes
@@ -667,6 +701,7 @@ reducer = PatternMatcher([                                                      
   # delete_redundant_gates (after expand, is this still needed?)
   (NOp(UOps.STORE, name="root"), delete_redundant_gates),
 ])
+
 from tinygrad.shape.symbolic import sym_infer, sint, Variable                                                                                                                                            # renderer/__init__.py:6
 from tinygrad.dtype import DType                                                                                                                                                                         # renderer/__init__.py:7
 
@@ -700,6 +735,8 @@ class Renderer:                                                                 
   shared_max: int = 32768                                                                                                                                                                                # renderer/__init__.py:56
   tensor_cores: List[TensorCore] = []                                                                                                                                                                    # renderer/__init__.py:57
 
+class _Device:                                                                                                                                                                                           # device.py:13
+
 Device = _Device()                                                                                                                                                                                       # device.py:41
 
   class _Device:                                                                                                                                                                                         # device.py:13
@@ -712,6 +749,8 @@ class BufferOptions:
   cpu_access: bool = False                                                                                                                                                                               # device.py:49
   host: bool = False                                                                                                                                                                                     # device.py:50
   nolru: bool = False                                                                                                                                                                                    # device.py:51
+
+class _MallocAllocator(LRUAllocator):                                                                                                                                                                    # device.py:164
 
 MallocAllocator = _MallocAllocator()                                                                                                                                                                     # device.py:171
 
@@ -726,7 +765,9 @@ class HCQBuffer(Protocol): va_addr:int; size:int # noqa: E702
 
 from weakref import ref, ReferenceType, WeakValueDictionary                                                                                                                                              # lazy.py:9
 lazycache: WeakValueDictionary[Any, LazyBuffer] = WeakValueDictionary()                                                                                                                                  # lazy.py:11
+
 view_supported_devices = {"LLVM", "CLANG", "CUDA", "NV", "AMD", "METAL", "DISK"}                                                                                                                         # lazy.py:24
+
 from tinygrad.multi import MultiLazyBuffer                                                                                                                                                               # tensor.py:14
 from __future__ import annotations                                                                                                                                                                       # multi.py:1
 from typing import Optional, Union, Any, Tuple, List, Dict                                                                                                                                               # multi.py:2
@@ -736,6 +777,7 @@ from tinygrad.dtype import DType, ConstType                                     
 from tinygrad.ops import BinaryOps, MetaOps, UnaryOps, TernaryOps, ReduceOps                                                                                                                             # multi.py:6
 from tinygrad.lazy import LazyBuffer                                                                                                                                                                     # multi.py:7
 from tinygrad.shape.shapetracker import sint                                                                                                                                                             # multi.py:8
+
 from tinygrad.ops import MetaOps, truncate                                                                                                                                                               # tensor.py:15
 from tinygrad.device import Device, Buffer, BufferOptions                                                                                                                                                # tensor.py:16
 from tinygrad.shape.symbolic import sint, Variable, MulNode, SumNode, NumNode, Node                                                                                                                      # tensor.py:17
@@ -787,6 +829,7 @@ render_ops: Any = { NumNode: lambda self, ops, ctx: UOp.const(dtypes.bigint, sel
     UOp(UOps.DEFINE_VAR, dtypes.int, (UOp.const(dtypes.int, self.min), UOp.const(dtypes.int, self.max)), self),
   SumNode: lambda self,ops,ctx: functools.reduce(lambda a,b: a+b.render(ops, ctx), self.nodes[1:], self.nodes[0].render(ops,ctx)),
   AndNode: lambda self,ops,ctx: functools.reduce(lambda a,b: a*b.render(ops, ctx), self.nodes[1:], self.nodes[0].render(ops,ctx)) }
+
 from enum import Enum, auto                                                                                                                                                                              # codegen/kernel.py:19
 
 class OptOps(Enum):                                                                                                                                                                                      # codegen/kernel.py:21
@@ -842,6 +885,7 @@ from tinygrad.device import Buffer, Device                                      
 from tinygrad.shape.view import View, strides_for_shape                                                                                                                                                  # engine/schedule.py:14
 sys.setrecursionlimit(10000)                                                                                                                                                                             # engine/schedule.py:17
 logops = open(getenv("LOGOPS", ""), "a") if getenv("LOGOPS", "") else None                                                                                                                               # engine/schedule.py:20
+
 @dataclass(frozen=True)                                                                                                                                                                                  # engine/schedule.py:25
 class ScheduleItem:
   ast: LazyOp                                                                                                                                                                                            # engine/schedule.py:26
@@ -850,6 +894,9 @@ class ScheduleItem:
 
 SCHEDULES: List = []                                                                                                                                                                                     # engine/schedule.py:321
 logkerns, logkerns_level = open(getenv("LOGKERNS", ""), "a") if getenv("LOGKERNS", "") else None, getenv("LOGKERNS_LEVEL", 1)                                                                            # engine/realize.py:15
+
+class BufferXfer(BufferCopy):                                                                                                                                                                            # engine/realize.py:143
+
 method_cache: Dict[Tuple[str, LazyOp, int, bool], CompiledRunner] = {}                                                                                                                                   # engine/realize.py:152
 
 @dataclass(frozen=True)                                                                                                                                                                                  # engine/realize.py:170
@@ -860,6 +907,7 @@ class ExecItem:
 
 capturing: List = []  # put classes with an add method in here                                                                                                                                           # engine/realize.py:220
 from tinygrad.engine.schedule import ScheduleItem, create_schedule_with_vars, memory_planner                                                                                                             # tensor.py:19
+
 import tinygrad.function as F                                                                                                                                                                            # tensor.py:42
 """This is where the forwards and backwards passes live."""                                                                                                                                              # function.py:1
 import math                                                                                                                                                                                              # function.py:2
@@ -870,6 +918,11 @@ from tinygrad.ops import UnaryOps, BinaryOps, TernaryOps, ReduceOps             
 from tinygrad.tensor import Function                                                                                                                                                                     # function.py:7
 from tinygrad.lazy import LazyBuffer                                                                                                                                                                     # function.py:8
 from tinygrad.shape.symbolic import sint                                                                                                                                                                 # function.py:9
+
+class Sqrt(Function):                                                                                                                                                                                    # function.py:70
+
+class Max(Function):                                                                                                                                                                                     # function.py:164
+
 class Tensor:                                                                                                                                                                                            # tensor.py:92
   """                                                                                                                                                                                                    # tensor.py:93
   A `Tensor` is a multi-dimensional matrix containing elements of a single data type.
@@ -896,6 +949,7 @@ if IMAGE:                                                                       
     def __bool__(self): return bool(self.value)                                                                                                                                                          # helpers.py:100
 
 if TRACEMETA >= 1:                                                                                                                                                                                       # tensor.py:3186
+
   for name, fn in inspect.getmembers(Tensor, inspect.isfunction):                                                                                                                                        # tensor.py:3187
     if name in ["__class__", "__init__", "__repr__", "backward", "sequential"]: continue                                                                                                                 # tensor.py:3188
     setattr(Tensor, name, functools.wraps(fn)(_metadata_wrapper(fn)))                                                                                                                                    # tensor.py:3189
@@ -926,6 +980,7 @@ from typing import List                                                         
 from tinygrad.helpers import dedup, flatten, getenv                                                                                                                                                      # nn/optim.py:3
 from tinygrad.tensor import Tensor                                                                                                                                                                       # nn/optim.py:4
 from tinygrad.dtype import dtypes, least_upper_dtype                                                                                                                                                     # nn/optim.py:5
+
 import os, json, pathlib, zipfile, pickle, tarfile, struct                                                                                                                                               # nn/state.py:1
 from typing import Dict, Union, List, Optional, Any, Tuple                                                                                                                                               # nn/state.py:2
 from tinygrad.tensor import Tensor                                                                                                                                                                       # nn/state.py:3
@@ -940,9 +995,12 @@ from collections import OrderedDict                                             
 import gzip                                                                                                                                                                                              # nn/datasets.py:1
 from tinygrad.tensor import Tensor                                                                                                                                                                       # nn/datasets.py:2
 from tinygrad.helpers import fetch                                                                                                                                                                       # nn/datasets.py:3
+
 BatchNorm2d = BatchNorm3d = BatchNorm                                                                                                                                                                    # nn/__init__.py:62
+
 from dataclasses import dataclass                                                                                                                                                                        # engine/jit.py:14
 from weakref import WeakKeyDictionary                                                                                                                                                                    # engine/jit.py:15
+
 ReturnType = TypeVar('ReturnType')                                                                                                                                                                       # engine/jit.py:131
 
 @dataclass                                                                                                                                                                                               # engine/jit.py:133
@@ -2746,6 +2804,7 @@ a.tolist()                                                                      
 
                                                                   res.extend(new_stores)                                                                                                                 # codegen/uops.py:178
                                                                 return res                                                                                                                               # codegen/uops.py:179
+
                                                               @dataclass(frozen=True, eq=False)                                                                                                          # codegen/uops.py:32
                                                               class UOp:
                                                                 @functools.cached_property                                                                                                               # codegen/uops.py:98
@@ -2923,6 +2982,7 @@ a.tolist()                                                                      
 
                                                                     seen_vars = set()                                                                                                                    # renderer/cstyle.py:113
                                                                     for u in uops:                                                                                                                       # renderer/cstyle.py:114
+
                                                                       uop,dtype,src,args = u.op,u.dtype,u.src,u.arg                                                                                      # renderer/cstyle.py:115
                                                                       if uop is UOps.IF:                                                                                                                 # renderer/cstyle.py:117
                                                                       elif uop is UOps.BARRIER: kk(self.barrier)                                                                                         # renderer/cstyle.py:120
@@ -2996,8 +3056,10 @@ a.tolist()                                                                      
                                                                           val = self.code_for_op[args](*operands, dtype)                                                                                 # renderer/cstyle.py:137
                                                                           assert child_count[u] != 0, f"childless ALU op found {u}"                                                                      # renderer/cstyle.py:138
                                                                           if child_count[u] <= 1 and args is not BinaryOps.MAX and not getenv("EXPAND_SSA"): r[u] = val                                  # renderer/cstyle.py:140
+
                                                                         assert src[0].dtype is not None and src[2].dtype is not None                                                                     # renderer/cstyle.py:125
                                                                         rendered_store = self.render_store(r[src[0]], src[0].dtype, r[src[2]], src[2].dtype, strip_parens(r[src[1]]), src[0].op is UOps.DEFINE_LOCAL) # renderer/cstyle.py:126
+
                                                                           class CStyleLanguage(Renderer):                                                                                                # renderer/cstyle.py:11
                                                                             # returns a str statement that does the store                                                                                # renderer/cstyle.py:81
                                                                             def render_store(self, buf_name:str, buf_dtype:DType, var_name:str, var_dtype:DType, idx:str, local=False) -> str:
@@ -3007,8 +3069,10 @@ a.tolist()                                                                      
                                                                               return f"*({buf_name}+{idx}) = {var_name};" if self.uses_ptr_arithmetic else f"{buf_name}[{idx}] = {var_name};"            # renderer/cstyle.py:90
 
                                                                         kk(f"if ({r[src[3]]}) {{ {rendered_store} }}" if len(src) > 3 else rendered_store)                                               # renderer/cstyle.py:127
+
                                                                         depth -= 1                                                                                                                       # renderer/cstyle.py:122
                                                                         kk("}")                                                                                                                          # renderer/cstyle.py:123
+
                                                                     return self.render_kernel(name, kernel, bufs, uops)                                                                                  # renderer/cstyle.py:184
 
                                                                       class CStyleLanguage(Renderer):                                                                                                    # renderer/cstyle.py:11
@@ -3222,9 +3286,13 @@ a.tolist()                                                                      
                                                                               if getenv("LRU", 1) and (options is None or not options.nolru): self.cache[(size, options)].append(opaque)                 # device.py:161
 
                                                                     return self                                                                                                                          # tensor.py:204
+
                                                                     buf = cast(Buffer, cast(LazyBuffer, cpu.lazydata).base.realized)                                                                     # tensor.py:245
+
                                                                     if self.device != "CLANG": buf.options = BufferOptions(nolru=True)                                                                   # tensor.py:246
+
                                                                     return buf.as_buffer(allow_zero_copy=True if self.device != "CLANG" else False)                                                      # tensor.py:247
+
                                                                   class _MallocAllocator(LRUAllocator):                                                                                                  # device.py:164
                                                                     def copyout(self, dest:memoryview, src): ctypes.memmove(from_mv(dest), src, len(dest))                                               # device.py:168
 
