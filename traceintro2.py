@@ -8,6 +8,13 @@ from io import BytesIO
 
 # TODO: print existing function definition when taking a different path through it. annotate whats different, note if its complete
     # get complete definitions in preprocessing
+    # if a function line is new, also add to lines in current callStack
+    # if parent function already has lines in the lexicon, but this line is new:
+        # reintroduction?
+            # get any lines between current lineno and previous line from callStack[-1]["lines"]
+            # print those lines
+        # print new line and add NEW to end of line before filename:lineno
+# TODO: removet the newParents garbage. since callstack paradigm, there is only one stack of parents per call
 # TODO: following function calls UOp.const for the first time. the functions definition is skipped.
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
@@ -169,6 +176,8 @@ class Tracer():
                 newParents = parents[i:]
                 break
         if newParents:
+            if not self.callStack[-1]["everyoneIntroduced"]: self.callStack[-1]["everyoneIntroduced"] = True
+            else: print("reintroducing parents in latest callstack") # never triggered
             self.singleSpace(force = True)
             # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
             if not self.callStack[-1]["type"].startswith("class") and self.callStack[-2]:
@@ -217,7 +226,7 @@ class Tracer():
                                 lineno = lineno + 1 + len(multilines)
                         
                         indent = self.callStack[-1]["indent"] if self.callStack else 0
-                        self.callStack.append({"name": f"{filename}:{lineno}", "type": line.strip()[:5], "indent": indent, "lastIndent": 0, "introduced": []})
+                        self.callStack.append({"name": f"{filename}:{lineno}", "type": line.strip()[:5], "indent": indent, "lastIndent": 0, "introduced": [], "everyoneIntroduced": False})
                     elif event == "return":
                         if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"): self.singleSpace()
                         self.callStack.pop()
