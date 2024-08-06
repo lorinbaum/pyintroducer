@@ -206,7 +206,7 @@ class Tracer():
             if lineno not in self.skipmultilines[filename]: line, multilines = self.advance(filename, lineno, 0)
             else: line = None
             if event == "call":
-                if line:
+                if line != None:
                     # a call event will "jump" to the decorator if there is one
                     if line.strip().startswith("@"):
                         while line.strip().startswith("@"):
@@ -228,7 +228,8 @@ class Tracer():
                             if not line.strip().startswith("@") or filename == script_path:
                                 if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"):
                                     parent = self.callStack[-1]["name"]
-                                    if lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
+                                    # assert parent in self.lexicon, f"{parent}"
+                                    if parent in self.lexicon and lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
                                         if not self.callStack[-1]["lines"]: self.introduceParents()
                                         self.callStack[-1]["lines"].append(lineno)
                                         self.lexicon[parent]["lines"].append(lineno)
@@ -239,7 +240,6 @@ class Tracer():
                                             #     # print all lines from previous line in callstack to current line
                                                 for no in knownLines:
                                                     if lineno > no > prevNo:
-                                                        # self.output_file.write(f"reintroducing {parent}\n")
                                                         assert no not in self.skipmultilines[filename], f"{filename=}, {lineno}, {parent=}, {knownLines=}"
                                                         knownLine, knownmultilines = self.advance(filename, no, 0)
                                                         self.write(filename, no, [knownLine, *knownmultilines], old=True)
