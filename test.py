@@ -4,8 +4,8 @@ a.tolist()
 
 
 
-# GPT 2
-#!/usr/bin/env python3
+# # GPT 2
+# # !/usr/bin/env python3
 # from typing import Optional, Union
 # import argparse
 # import numpy as np
@@ -178,7 +178,7 @@ a.tolist()
 # if __name__ == "__main__":
 #   Tensor.no_grad = True
 #   print(f"using {Device.DEFAULT} backend")
-#   default_prompt = "The meaning of the universe and everything is "
+#   default_prompt = "What is the answer to life, the universe, and everything?"
 
 #   parser = argparse.ArgumentParser(description='Run GPT2 in tinygrad', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 #   parser.add_argument('--prompt', type=str, default=default_prompt, help="Phrase to start with")

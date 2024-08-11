@@ -38,7 +38,7 @@ sys.settrace(tracer.trace_dispatch)
 runpy.run_path(script_path, run_name="__main__")
 sys.settrace(None)
 
-output_path = f"{script_path}_trace.txt"
+output_path = f"{script_path}_traceraw.txt"
 print(f"writing to {output_path}")
 with open(output_path, "w") as output_file:
     output_file.write("".join(tracer.execlines))

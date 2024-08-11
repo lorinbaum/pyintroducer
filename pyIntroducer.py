@@ -6,20 +6,11 @@ from typing import List, Dict, Union
 from tokenize import tokenize, TokenError
 from io import BytesIO
 
-# TODO: print existing function definition when taking a different path through it. annotate whats different, note if its complete
-    # get complete definitions in preprocessing
-    # if a function line is new, also add to lines in current callStack
-    # if parent function already has lines in the lexicon, but this line is new:
-        # reintroduction?
-            # get any lines between current lineno and previous line from callStack[-1]["lines"]
-            # print those lines
-        # print new line and add NEW to end of line before filename:lineno
-        # if this completes the new function, append a line saying so.
-# TODO: removet the newParents garbage. since callstack paradigm, there is only one stack of parents per call
 # TODO: following function calls UOp.const for the first time. the functions definition is skipped.
     # the parent introduction following the call appears to come from nowhere to the unknowing reader
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
     # maybe print the source of the call if its not printed already and explain what happened.
+# TODO: call to hook_overflow not presented correctly?
 
 class Tracer():
     def __init__(self, output_path):
