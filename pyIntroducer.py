@@ -153,7 +153,7 @@ class Tracer():
 
     def introduceParents(self):
         parent = self.callStack[-1]["name"]
-        parents = self.lexicon[parent]["parents"][::-1] + [parent] # order is old -> young
+        parents = self.lexicon[parent]["parents"] + [parent] # order is old -> young
         self.singleSpace(force = True)
         # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
         if not self.callStack[-1]["type"].startswith("class") and self.callStack[-2]:
