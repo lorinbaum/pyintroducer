@@ -213,7 +213,7 @@ class Tracer():
             if lineno not in self.skipmultilines[filename]:
                 if line.strip() != "":
                     filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
-                    print(f"{filename_short:40}:{lineno:6}", end="\r")  
+                    print(f"\033[1G\033[2K{filename_short:40}:{lineno:<6}", end="\r")
                     if event == "line" and line.strip() != "":
                         if lineno not in self.lines[filename]:
                             if not line.strip().startswith("@") or filename == script_path:
@@ -244,9 +244,8 @@ class Tracer():
 
         return self.trace_dispatch
 
-# script_path = sys.argv[1]
-script_path = "test.py"
-output_path = f"{script_path}_trace2.txt"
+script_path = sys.argv.pop(1)
+output_path = f"{script_path}_introduced.py"
 tracer = Tracer(output_path)
 
 sys.settrace(tracer.trace_dispatch)
@@ -254,4 +253,4 @@ runpy.run_path(script_path, run_name="__main__")
 sys.settrace(None)
 
 tracer.output_file.close()
-print(f"introduction written to {output_path:30}")
+print(f"\033[1G\033[2Kintroduction written to {output_path:30}")

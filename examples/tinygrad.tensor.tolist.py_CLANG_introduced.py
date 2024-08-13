@@ -1,4 +1,5 @@
-from tinygrad.tensor import Tensor                                                                                                                                                                       # test.py:1
+# CLANG=1 python pyIntroducer.py examples/tinygrad.tensor.tolist.py
+from tinygrad.tensor import Tensor                                                                                                                                                                       # ...s/tinygrad.tensor.tolist.py:1
 from tinygrad.tensor import Tensor                            # noqa: F401                                                                                                                               # __init__.py:1
 from __future__ import annotations                                                                                                                                                                       # tensor.py:2
 import dataclasses                                                                                                                                                                                       # tensor.py:3
@@ -1037,7 +1038,7 @@ from tinygrad.shape.symbolic import Variable                  # noqa: F401      
 from tinygrad.dtype import dtypes                             # noqa: F401                                                                                                                               # __init__.py:4
 from tinygrad.helpers import GlobalCounters, fetch, Context   # noqa: F401                                                                                                                               # __init__.py:5
 from tinygrad.device import Device                            # noqa: F401                                                                                                                               # __init__.py:6
-a = (Tensor([1,2,3], device="CLANG") + 2)                                                                                                                                                                # test.py:2
+a = (Tensor([1,2,3], device="CLANG") + 2)                                                                                                                                                                # ...s/tinygrad.tensor.tolist.py:2
 
   class Tensor:                                                                                                                                                                                          # tensor.py:92
     def __init__(self, data:Union[None, ConstType, List, Tuple, LazyBuffer, np.ndarray, bytes, MultiLazyBuffer, Variable],                                                                               # tensor.py:108
@@ -1516,7 +1517,7 @@ a = (Tensor([1,2,3], device="CLANG") + 2)                                       
       _METADATA.reset(token)                                                                                                                                                                             # tensor.py:3252
       return ret                                                                                                                                                                                         # tensor.py:3253
 
-a.tolist()                                                                                                                                                                                               # test.py:3
+a.tolist()                                                                                                                                                                                               # ...s/tinygrad.tensor.tolist.py:3
 
   class Tensor:                                                                                                                                                                                          # tensor.py:92
     # TODO: should be Tensor.tolist() -> Union[List[ConstType], ConstType]. The List is Sequence because mypy expects memoryview.tolist() -> list[int]                                                   # tensor.py:278
@@ -3395,36 +3396,6 @@ a.tolist()                                                                      
                                           try:                                                                                                                                                           # helpers.py:230
                                             res = cur.execute(f"SELECT val FROM '{table}_{VERSION}' WHERE {' AND '.join([f'{x}=?' for x in key.keys()])}", tuple(key.values()))                          # helpers.py:231
                                           if (val:=res.fetchone()) is not None: return pickle.loads(val[0])                                                                                              # helpers.py:234
-                                          return None                                                                                                                                                    # helpers.py:235
-
-                                        assert not getenv("ASSERT_COMPILE"), f"tried to compile with ASSERT_COMPILE set\n{src}"                                                                          # device.py:181
-
-                                        lib = self.compile(src)                                                                                                                                          # device.py:182
-
-                                          class ClangCompiler(Compiler):                                                                                                                                 # runtime/ops_clang.py:6
-                                            def compile(self, src:str) -> bytes:                                                                                                                         # runtime/ops_clang.py:7
-                                              with tempfile.NamedTemporaryFile(delete=True) as output_file:                                                                                              # runtime/ops_clang.py:9
-                                                subprocess.check_output(['clang', '-shared', '-march=native', '-O2', '-Wall', '-Werror', '-x', 'c', '-fPIC', '-ffreestanding', '-nostdlib',              # runtime/ops_clang.py:10
-                                                                         '-', '-o', str(output_file.name)], input=src.encode('utf-8'))
-                                                return pathlib.Path(output_file.name).read_bytes()                                                                                                       # runtime/ops_clang.py:12
-
-                                        if self.cachekey is not None: diskcache_put(self.cachekey, src, lib)                                                                                             # device.py:183
-
-                                          def diskcache_put(table:str, key:Union[Dict, str, int], val:Any):                                                                                              # helpers.py:238
-                                            if CACHELEVEL == 0: return val                                                                                                                               # helpers.py:239
-                                            if isinstance(key, (str,int)): key = {"key": key}                                                                                                            # helpers.py:240
-                                            conn = db_connection()                                                                                                                                       # helpers.py:241
-
-                                            cur = conn.cursor()                                                                                                                                          # helpers.py:242
-                                            if table not in _db_tables:                                                                                                                                  # helpers.py:243
-                                              TYPES = {str: "text", bool: "integer", int: "integer", float: "numeric", bytes: "blob"}                                                                    # helpers.py:244
-                                              ltypes = ', '.join(f"{k} {TYPES[type(key[k])]}" for k in key.keys())                                                                                       # helpers.py:245
-                                              cur.execute(f"CREATE TABLE IF NOT EXISTS '{table}_{VERSION}' ({ltypes}, val blob, PRIMARY KEY ({', '.join(key.keys())}))")                                 # helpers.py:246
-                                              _db_tables.add(table)                                                                                                                                      # helpers.py:247
-                                            cur.execute(f"REPLACE INTO '{table}_{VERSION}' ({', '.join(key.keys())}, val) VALUES ({', '.join(['?']*len(key.keys()))}, ?)", tuple(key.values()) + (pickle.dumps(val), ))  # noqa: E501 # helpers.py:248
-                                            conn.commit()                                                                                                                                                # helpers.py:249
-                                            cur.close()                                                                                                                                                  # helpers.py:250
-                                            return val                                                                                                                                                   # helpers.py:251
 
                                       return lib                                                                                                                                                         # device.py:184
 
