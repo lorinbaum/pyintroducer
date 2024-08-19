@@ -168,13 +168,16 @@ class Tracer():
         parents = self.lexicon[parent]["parents"] + [parent] # order is old -> young
         self.singleSpace(force = True)
         # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
-        if not self.callStack[-1]["type"].startswith("class") and len(self.callStack) >= 2: self.callStack[-1]["indent"] += self.tabsize + self.callStack[-2]["lastIndent"]
         for p in parents:
             lines = self.getFullParent(*p.split(":"))
             self.write(p.split(":")[0], int(p.split(":")[1]), lines, whitespace=False)
             self.spaced = False
 
     def write(self, filename:str, lineno:int, lines:Union[str, List[str]], glob="{}", loca="{}", old=False, whitespace=True):
+        # resolve indent
+        if not self.callStack[-1]["lines"] and len(self.callStack) >= 2 and not self.callStack[-1]["type"].startswith("class"): self.callStack[-1]["indent"] += self.tabsize + self.callStack[-2]["lastIndent"]
+        self.callStack[-1]["lines"].append(lineno)
+
         filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
         if len(filename_short) > self.maxfilename: filename_short = f"...{filename_short[-(self.maxfilename-3):]}"
         if not isinstance(lines, list): lines = [lines]
@@ -250,11 +253,10 @@ class Tracer():
                             # assert parent in self.lexicon, f"{parent}"
                             if parent in self.lexicon and lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
                                 if not self.callStack[-1]["lines"]: self.introduceParents()
-                                self.callStack[-1]["lines"].append(lineno)
                                 self.lexicon[parent]["lines"].append(lineno)
                                 if not line.strip().startswith("def ") and not line.strip().startswith("class "):
                                     if knownLines := self.lexicon[parent]["lines"]:
-                                        prevNo = self.callStack[-1]["lines"][-2] if self.callStack[-1]["lines"] and len(self.callStack[-1]["lines"]) > 1 else 0
+                                        prevNo = self.callStack[-1]["lines"][-1] if self.callStack[-1]["lines"] else 0
                                         # print all lines from previous line in callstack to current line
                                         for no in knownLines:
                                             if lineno > no > prevNo:
