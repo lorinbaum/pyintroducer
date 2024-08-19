@@ -11,13 +11,16 @@ from io import BytesIO
         # def float4_expand_load(load, buf, ex, idx=UOp.const(dtypes.int, 0), idx2=None):
     # maybe print the source of the call if its not printed already and explain what happened.
 # TODO: call to hook_overflow not presented correctly?
+# TODO: store doc strings in preprocessing and print on first introduction
+# TODO: store comments and empty lines in preprocessing, if comment, store with indent of the comment, if empty line, store with indent of the previous code line
+    # when writing, check if there are any comments / empty lines with the indent of the new line between previously printed an new line
 
 class Tracer():
     def __init__(self, output_path):
         self.output_file = open(output_path, "w")
         
         # stores function and classes. linenumber is where def or class statement is.
-        self.lexicon:Dict["filename:fileno":str : Dict["parents": List["filename:linenumber":str], "lines": List["lineno":int]]] = {}
+        self.lexicon:Dict["filename:fileno":str : Dict["parents": List["filename:linenumber":str], "lines": List["lineno":int], "whitespace": List[Dict["indent":int, "line":str], "doc": str]]] = {}
         # stores all printed lines to avoid duplication
         self.lines:Dict[str:List[int]] = {}
         # stores lines that are part of multilines that should be ignored in all cases
@@ -27,8 +30,7 @@ class Tracer():
         # class parents that contain nothing except class or function definitions and docstrings
         self.unacceptableParents = []
         self.spaced = True # beginning of line
-        # introduced stores introduced parents in the current call. old -> young
-        self.callStack:List[Dict["name":str, "type": str, "indent": int, "lastIndent": int, "introduced": List[str]], "lines": List["lineno":int]] = []
+        self.callStack:List[Dict["name":str, "type": str, "indent": int, "lastIndent": int], "lines": List["lineno":int]] = []
         # for glob and loca variable printing
         self.namespaces, self.namespace = {}, None
 
@@ -45,24 +47,18 @@ class Tracer():
             tries to tokenize every line. if it fails, its a multiline statement. add lines until tokenize succeeds
             every line in a multiline statement that isn't the first one is added to self.skipmultilines so it can later be ignored
         parents:
-            looks at indentation of class and def statements to determine parents, stores current prospective parents
-            judges prospective parents before moving to the next.
-                blacklists them if they have nothing but class or function definitions and docstrings
+            looks at indentation of class and def statements to determine parents, stores current parents before moving to the next.
+            blacklists them if they have nothing but class or function definitions and docstrings
         """
         if filename in self.processedFiles: return
         self.processedFiles.append(filename)
         self.skipmultilines[filename] = []
         def farewell():
             """
-            pops a parent off currentParents,
-            blacklists if if its unacceptable,
-            adds it to self.lexicon
+            pops a parent off currentParents, blacklists it if its unacceptable, adds it to self.lexicon
             """
-            bye = currentParents.pop()
-            if not bye["acceptable"] and bye["class"]:
-                self.unacceptableParents.append(bye["name"])
-            
-            if bye["name"] not in self.lexicon: self.lexicon[bye["name"]] = {"parents": [p["name"] for p in currentParents], "lines": [], "fullDef": bye["lines"]}
+            if not (bye := currentParents.pop())["acceptable"] and bye["class"]: self.unacceptableParents.append(bye["name"])
+            if bye["name"] not in self.lexicon: self.lexicon[bye["name"]] = {"parents": [p["name"] for p in currentParents], "lines": []}
 
         with open(filename, "r") as f:
             lineno = 0
@@ -97,10 +93,7 @@ class Tracer():
                     if (cl := linesS.startswith("class ")) or linesS.startswith("def "):
                         classline = linesS.split("\n")[0].split("#")[0].strip() 
                         acceptable = False if not cl or classline.endswith(":") or classline.endswith("pass") else True
-                        currentParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable, "lines": []})
-
-                    if currentParents and not any([linesS.startswith("@")]):
-                        currentParents[-1]["lines"].append(baselineno)
+                        currentParents.append({"name": f"{filename}:{baselineno}", "indent": indent, "class":cl, "acceptable": acceptable})
                 
                 baselineno = lineno + 1
                 lines = f.readline()
@@ -142,39 +135,62 @@ class Tracer():
         self.trueSpaced = True
 
     def getFullParent(self, filename:str, lineno:str) -> List[str]:
+        """
+        returns lines including comments and decorators immediately before the function definition, function definition itself and
+        its docstring if not self.lexicon[parent]["lines"]
+        """
         lineno = int(lineno)
         line, multilines = self.advance(filename, lineno, 0)
-        fullParent = [line, *multilines][::-1]
-        line, multilines = self.recede(filename, lineno, 1)
+        fullParent = [line, *multilines]
+        nline, nmulti = self.recede(filename, lineno, 1)
         newlineno = lineno
-        while any([line.strip().startswith("@"), line.strip().startswith("#")]):
-            fullParent += [line, *multilines]
-            newlineno = newlineno - 1 - len(multilines)
-            line, multilines = self.recede(filename, newlineno, 1)
-        return fullParent[::-1]
+        while any([nline.strip().startswith("@"), nline.strip().startswith("#")]):
+            fullParent = [nline, *nmulti] + fullParent
+            newlineno = newlineno - 1 - len(nmulti)
+            nline, nmulti = self.recede(filename, newlineno, 1)
+        # get docstring
+        assert (p := f"{filename}:{lineno}") in self.lexicon
+        if not self.lexicon[p]["lines"]:
+            newlineno = lineno + 1 + len(multilines)
+            while True: 
+                nline, nmulti = self.advance(filename, newlineno, 0)
+                if (nlineS := nline.strip()).startswith("'''") or nlineS.startswith('"""'):
+                    fullParent += [nline, *nmulti]
+                    break
+                elif not nlineS == "" or nline == "": break
+                newlineno = newlineno + 1 + len(nmulti)
+
+
+        return fullParent
 
     def introduceParents(self):
         parent = self.callStack[-1]["name"]
         parents = self.lexicon[parent]["parents"] + [parent] # order is old -> young
         self.singleSpace(force = True)
         # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
-        if not self.callStack[-1]["type"].startswith("class") and self.callStack[-2]:
-            self.callStack[-1]["indent"] += 1 + self.callStack[-2]["lastIndent"]
-        if self.callStack[-1]["introduced"] and self.callStack[-1]["introduced"][0] not in parents: # not working?
-            if linecache.getline(parent.split(":")[0], int(parent.split(":")[1])).strip().startswith("def "):
-                self.output_file.write(f"{'  ' * self.callStack[-1]['indent']}# introducing:\n")
-        self.callStack[-1]["introduced"] = parents
+        if not self.callStack[-1]["type"].startswith("class") and len(self.callStack) >= 2: self.callStack[-1]["indent"] += self.tabsize + self.callStack[-2]["lastIndent"]
         for p in parents:
             lines = self.getFullParent(*p.split(":"))
-            self.write(p.split(":")[0], int(p.split(":")[1]), lines)
+            self.write(p.split(":")[0], int(p.split(":")[1]), lines, whitespace=False)
             self.spaced = False
 
-    def write(self, filename:str, lineno:int, lines:Union[str, List[str]], glob="{}", loca="{}", old=False):
+    def write(self, filename:str, lineno:int, lines:Union[str, List[str]], glob="{}", loca="{}", old=False, whitespace=True):
         filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
         if len(filename_short) > self.maxfilename: filename_short = f"...{filename_short[-(self.maxfilename-3):]}"
         if not isinstance(lines, list): lines = [lines]
         lineinfo = False
         indent = self.callStack[-1]["indent"]
+
+        # get preceding whitespace
+        if whitespace:
+            nlineno, newlines = lineno, []
+            while True:
+                nline, nmulti = self.recede(filename, nlineno, 1)
+                if (nlineS := nline.strip()).startswith("#") or nlineS == "" and nlineno >= 1:
+                    newlines = [nline, *nmulti] + newlines
+                    nlineno = nlineno - 1 - len(nmulti)
+                else: break
+            for ln in newlines: self.output_file.write(f"{' ' * indent}{ln.rstrip()}\n")
 
         globstring = str(glob).replace("\n", "\\n")
         try:
@@ -184,14 +200,14 @@ class Tracer():
         for ln in lines:
             if not lineinfo:
                 if old: 
-                    outLine = f"{'  ' * indent}{ln.rstrip():{200 - indent * self.tabsize - 6}} # OLD # {filename_short:{self.maxfilename}}:{lineno:6}\n" # fails if indent > 200
+                    outLine = f"{' ' * indent}{ln.rstrip():{200 - indent - 6}} # OLD # {filename_short:{self.maxfilename}}:{lineno:6}\n" # fails if indent > 200
                 else:
-                    outLine = f"{'  ' * indent}{ln.rstrip():{200 - indent * self.tabsize}} # {filename_short:{self.maxfilename}}:{lineno:6}    G: {globstring}     L: {locastring}\n" # fails if indent > 200
+                    outLine = f"{' ' * indent}{ln.rstrip():{200 - indent}} # {filename_short:{self.maxfilename}}:{lineno:6}    G: {globstring}     L: {locastring}\n" # fails if indent > 200
                 lineinfo = True
             else:
-                outLine = f"{'  ' * indent}{ln}"
+                outLine = f"{' ' * indent}{ln}"
             self.output_file.write(outLine)
-        self.callStack[-1]["lastIndent"] = int(len(whitespace) / self.tabsize) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0 # TODO: ugly how it divides the given lines by the custom tabsize. can go wrong I think
+        self.callStack[-1]["lastIndent"] = len(whitespace) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0
         self.lines[filename].append(lineno)
         self.trueSpaced = False
         self.spaced = False
@@ -213,17 +229,15 @@ class Tracer():
                             lineno = lineno + 1 + len(multilines)
                     callType = line.strip()[:5]
                 else: callType = ""
-                indent = self.callStack[-1]["indent"] if self.callStack else 0
-                self.callStack.append({"name": f"{filename}:{lineno}", "type": callType, "indent": indent, "lastIndent": 0, "introduced": [], "lines": []})
+                indent, lastIndent = map(lambda x: self.callStack[-1][x] if self.callStack else 0, ["indent", "lastIndent"])
+                self.callStack.append({"name": f"{filename}:{lineno}", "type": callType, "indent": indent, "lastIndent": lastIndent, "introduced": [], "lines": []})
             elif event == "return":
                 if self.callStack[-1]["type"].startswith("class") or self.callStack[-1]["type"].startswith("def"): self.singleSpace()
                 self.callStack.pop()
             elif event == "line" and lineno not in self.skipmultilines[filename] and line.strip() != "":
-                # filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
-                # print(f"\033[1G\033[2K{filename_short:40}:{lineno:<6}", end="\r")
                 if lineno not in self.lines[filename]:
                     if not line.strip().startswith("@") or filename == script_path:
-                        # glob loca
+                        # global, local variables
                         if (name := frame.f_globals["__name__"]) != self.namespace: self.namespace = name
                         if name not in self.namespaces: self.namespaces[name] = {"glob": {}, "loca": {}}
                         newglob = {key:value for key, value in frame.f_globals.items() if key not in ["__builtins__"] and (key not in self.namespaces[name]["glob"] or id(self.namespaces[name]["glob"][key]) != id(value))}
@@ -239,15 +253,14 @@ class Tracer():
                                 self.callStack[-1]["lines"].append(lineno)
                                 self.lexicon[parent]["lines"].append(lineno)
                                 if not line.strip().startswith("def ") and not line.strip().startswith("class "):
-                                    assert lineno in self.lexicon[parent]["fullDef"], f"{parent=}, {filename=}, {lineno=}, {self.lexicon[parent]['fullDef']=}"
                                     if knownLines := self.lexicon[parent]["lines"]:
                                         prevNo = self.callStack[-1]["lines"][-2] if self.callStack[-1]["lines"] and len(self.callStack[-1]["lines"]) > 1 else 0
-                                    #     # print all lines from previous line in callstack to current line
+                                        # print all lines from previous line in callstack to current line
                                         for no in knownLines:
                                             if lineno > no > prevNo:
                                                 assert no not in self.skipmultilines[filename], f"{filename=}, {lineno}, {parent=}, {knownLines=}"
                                                 knownLine, knownmultilines = self.advance(filename, no, 0)
-                                                self.write(filename, no, [knownLine, *knownmultilines], glob=newglob, loca=newloca, old=True)
+                                                self.write(filename, no, [knownLine, *knownmultilines], old=True)
                                             elif no >= lineno: break
                                     # NOTE: if parent is a class, function definition lines when printed will be in its lines list
                                     if not line.strip().startswith("def ") and not line.strip().startswith("class "):
