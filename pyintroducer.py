@@ -63,13 +63,12 @@ class Tracer():
             """
             if not (bye := currentParents.pop())["acceptable"] and bye["class"]: self.unacceptableParents.append(bye["name"])
             if bye["name"] not in self.lexicon: self.lexicon[bye["name"]] = {"parents": [p["name"] for p in currentParents[1:]], "lines": [], "bases":bye["bases"]}
-            else: print(bye["name"], "already in lexicon?")
 
         with open(filename, "r") as f:
             lineno = 0
             baselineno = 1
             lines = f.readline()
-            # holds one entry for "file" so I can store bases in it
+            # already holds one entry for "file" so I can store bases in it
             currentParents = [{"name": filename, "indent": -1, "class": False, "acceptable": True, "bases":[]}]
             prevlines, prevlineno, prevIndent = "", 0, 0
             while True:
@@ -249,13 +248,11 @@ class Tracer():
             else: line = None
             if event == "call":
                 if line != None:
-                    # calls to yield can happen. Find its parent.
-                    if line.strip().startswith("yield"):
+                    if line.strip().startswith("yield"): # calls to yield can happen. Find its parent.
                         while not line.strip().startswith("def "):
                             line, multilines = self.recede(filename, lineno, 1)
                             lineno = lineno - 1 - len(multilines)
-                    # a call event will "jump" to the decorator if there is one
-                    while line.strip().startswith("@"):
+                    while line.strip().startswith("@"): # a call event will "jump" to the decorator if there is one
                         lineno = lineno + 1 + len(multilines)
                         line, multilines = self.advance(filename, lineno, 0)
                     callType = line.strip()[:5]
@@ -297,7 +294,6 @@ class Tracer():
                             if newBases:=self.bases.get(filename, {}).get(lineno):
                                 prevBases, newBases = self.callStack[-1]["bases"], newBases
                                 if prevBases != newBases: # bases are different
-                                    print(filename, lineno, prevBases, newBases, self.callStack[-1])
                                     if lineno > self.callStack[-1]["prevlineno"]:
                                         introduce = [b for b in newBases if b not in prevBases]
                                         for b in introduce:
