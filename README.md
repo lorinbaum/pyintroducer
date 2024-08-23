@@ -26,8 +26,3 @@ The execution can be seen as a story and it better be one that makes sense. Func
 Readablility of the "introduced" file could be an indicator for simplicity of the traced source code.
 
 Ideally, no extra notes upon reading the trace should be necessary for good understanding. This may require high level comments to provide orientation around the story. I think it should be integrated into the code through docstrings. Which should be perfectly sufficient with the help of a well structured callstack to distinguish high from low level.
-
-## Known problems
-
-- if statements are often misleading because else statements are not printed
-- if execution branches differently within for or while loops and a branch is later revisisted, it is unreadable.
