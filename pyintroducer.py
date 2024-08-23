@@ -14,6 +14,16 @@ from io import BytesIO
 # TODO: move acceptable to lexicon
 # TODO: test advance with higher counts. made a mistake with count = 1
 
+def fine_dict(d):
+    """Remove entries failing repr(value)"""
+    d1 = {}
+    for k, v in d.items():
+        try:
+            repr(v)
+            d1[k] = v
+        except: pass
+    return d1
+
 class Tracer():
     def __init__(self, output_path):
         self.output_file = open(output_path, "w")
@@ -181,62 +191,45 @@ class Tracer():
             self.write(p.split(":")[0], int(p.split(":")[1]), lines, include_whitespace=False)
             self.spaced = False
 
-    def write(self, filename:str, lineno:int, lines:Union[str, List[str]], glob="{}", loca="{}", old=False, include_whitespace=True):
+    def write(self, filename:str, lineno:int, lines:Union[str, List[str]], G={}, L={}, old=False, include_whitespace=True):
         # TODO: write should not ask for lines if it has filename and lineno?
         """
-        list of lines only if multilines, not intended for list of logically distinct lines
-        updates self.callStack[-1]["bases"]
-                self.callStack[-1]["lines"]
+        writes line / multiline to self.output_file.
+        line list not intended for list of logically distinct lines.
+        updates prnted lines, indent, prevlineno and bases
         """
+        # Update
+        if not self.callStack[-1]["lines"] and len(self.callStack) >= 2: self.callStack[-1]["indent"] += self.tabsize + self.callStack[-2]["lastIndent"]
+        self.callStack[-1]["lastIndent"] = len(whitespace) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0
 
-        # resolve indent
-        # assuming "class calls" never happen except in imports, where they are just part of the code and not called from somewhere else, so should not be indented
-        if not self.callStack[-1]["lines"] and len(self.callStack) >= 2 and not self.callStack[-1]["type"].startswith("class"): self.callStack[-1]["indent"] += self.tabsize + self.callStack[-2]["lastIndent"]
+        self.callStack[-1]["prevlineno"] = lineno
         self.callStack[-1]["lines"].append(lineno)
+        self.lines[filename].append(lineno)
 
-        filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
-        if len(filename_short) > self.maxfilename: filename_short = f"...{filename_short[-(self.maxfilename-3):]}"
-        if not isinstance(lines, list): lines = [lines]
-        lineinfo = False
-        indent = self.callStack[-1]["indent"]
-
-        # update bases
         lineIndent = len(whitespace) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0
         self.callStack[-1]["bases"] = (b if (b:=self.bases.get(filename, {}).get(lineno)) else []) + ([{"lineno": lineno, "indent": lineIndent}] if lineno in self.baselines.get(filename, []) else [])
 
-        # update prevlineno
-        self.callStack[-1]["prevlineno"] = lineno
+        self.trueSpaced = self.spaced = False
+
+        # Write
+        filename_short = filename.split("tinygrad/")[-1] if "tinygrad" in filename else filename
+        if len(filename_short) > self.maxfilename: filename_short = f"...{filename_short[-(self.maxfilename-3):]}"
+        if not isinstance(lines, list): lines = [lines]
+        indent = self.callStack[-1]["indent"]
 
         # get preceding whitespace
         if include_whitespace:
             nlineno, newlines = lineno, []
             while True:
                 nline, nmulti = self.recede(filename, nlineno, 1)
-                if (nlineS := nline.strip()).startswith("#") or nlineS == "" and nlineno >= 1:
+                if (nlineS := nline.strip()).startswith("#") or nlineS == "" and nline != "":
                     newlines = [nline, *nmulti] + newlines
                     nlineno = nlineno - 1 - len(nmulti)
                 else: break
             for ln in newlines: self.output_file.write(f"{' ' * indent}{ln.rstrip()}\n")
 
-        globstring = str(glob).replace("\n", "\\n")
-        try:
-            locastring = str(loca).replace("\n", "\\n")
-        except: locastring = f"repr failed"
-
-        for ln in lines:
-            if not lineinfo:
-                if old:
-                    outLine = f"{' ' * indent}{ln.rstrip():{200 - indent - 6}} # OLD # {filename_short:{self.maxfilename}}:{lineno:6}\n" # fails if indent > 200
-                else:
-                    outLine = f"{' ' * indent}{ln.rstrip():{200 - indent}} # {filename_short:{self.maxfilename}}:{lineno:6}    G: {globstring}     L: {locastring}\n" # fails if indent > 200
-                lineinfo = True
-            else:
-                outLine = f"{' ' * indent}{ln}"
-            self.output_file.write(outLine)
-        self.callStack[-1]["lastIndent"] = len(whitespace) if (whitespace:=re.search("^(\s*)", lines[0])[1]) else 0
-        self.lines[filename].append(lineno)
-        self.trueSpaced = False
-        self.spaced = False
+        Gstr, Lstr = map(lambda x,y: "{}: {}    ".format(y, str(x).replace('\n','\\n')) if x and not old else "", (G,L), ("G", "L"))
+        list(map(self.output_file.write, map(lambda i,ln: f"{' ' * indent}{ln.rstrip():{200-indent}} {'#' if old or i == 0 else ''} {'OLD' if old else ' '*3} " + (f"{filename_short:{self.maxfilename}}:{lineno:6}: " if i == 0 else "") + (f"{Gstr}{Lstr}" if i == 0 else '') + "\n", range(len(lines)), lines)))
 
     def trace_dispatch(self, frame, event, arg):
         filename = frame.f_code.co_filename
@@ -265,31 +258,21 @@ class Tracer():
             elif event == "line" and lineno not in self.skipmultilines[filename] and line.strip() != "":
                 if lineno not in self.lines[filename]:
                     if not line.strip().startswith("@") or filename == script_path:
-                        # global, local variables
-                        if (name := frame.f_globals["__name__"]) != self.namespace: self.namespace = name
-                        if name not in self.namespaces: self.namespaces[name] = {"glob": {}, "loca": {}}
-                        newglob = {key:value for key, value in frame.f_globals.items() if key not in ["__builtins__"] and (key not in self.namespaces[name]["glob"] or id(self.namespaces[name]["glob"][key]) != id(value))}
-                        newloca = {key:value for key, value in frame.f_locals.items() if key not in ["__builtins__", *newglob.keys(), *self.namespaces[name]["glob"].keys()] and (key not in self.namespaces[name]["loca"] or id(self.namespaces[name]["loca"][key]) != id(value))}
-                        self.namespaces[name]["glob"] = frame.f_globals
-                        self.namespaces[name]["loca"] = frame.f_locals
-
                         # Introduce parents and reprint known function definition if any
-                        # can be refactored to only get reintroLines when there an introduction.
-                        parent = self.callStack[-1]["name"]
-                        if parent in self.lexicon and lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
-                            if not self.callStack[-1]["lines"]:
-                                self.introduceParents()
-                            self.lexicon[parent]["lines"] = sorted(self.lexicon[parent]["lines"] + [lineno])
-                            if not line.strip().startswith(("def ", "class ")):
-                                if knownLines := self.lexicon[parent]["lines"]:
-                                    prevNo = self.callStack[-1]["lines"][-1] if self.callStack[-1]["lines"] else 0
-                                    reintroLines = [(no, [ln, *lnmulti]) for no in knownLines if lineno > no > prevNo and no not in self.callStack[-1]["lines"] for ln, lnmulti in [self.advance(filename, no, 0)] if not ln.strip().startswith(("class ", "def ", "@"))]
-                                    for no, lines in reintroLines: self.write(filename, no, lines, old=True)
-                                # NOTE: if parent is a class, function definition lines when printed will be in its lines list
-                                # TODO: should reintroduce only lines from the one preceding onwards. often there is no preceding line, but there might be in a recursive function where the outer function causes a new lines after the children return
+                        if self.callStack:
+                            parent = self.callStack[-1]["name"]
+                            if parent in self.lexicon and lineno not in self.lexicon[parent]["lines"] and parent not in self.unacceptableParents:
+                                if not self.callStack[-1]["lines"]: self.introduceParents()
+                                self.lexicon[parent]["lines"] = sorted(self.lexicon[parent]["lines"] + [lineno])
+                                if not line.strip().startswith(("def ", "class ")):
+                                    if knownLines := self.lexicon[parent]["lines"]:
+                                        prevNo = self.callStack[-1]["lines"][-1] if self.callStack[-1]["lines"] else 0
+                                        reintroLines = [(no, [ln, *lnmulti]) for no in knownLines if lineno > no > prevNo and no not in self.callStack[-1]["lines"] for ln, lnmulti in [self.advance(filename, no, 0)] if not ln.strip().startswith(("class ", "def ", "@"))]
+                                        for no, lines in reintroLines: self.write(filename, no, lines, old=True)
+                                    # NOTE: if parent is a class, function definition lines when printed will be in its lines list
+                                    # TODO: should reintroduce only lines from the one preceding onwards. often there is no preceding line, but there might be in a recursive function where the outer function causes a new lines after the children return
                         
-                        acceptable = True if not self.callStack or (parent := self.callStack[-1]["name"]) not in self.unacceptableParents else False
-                        if not line.strip().startswith(("def ", "class ")) and acceptable:
+                        if not line.strip().startswith(("def ", "class ")) and (not self.callStack or parent not in self.unacceptableParents):
                             # reintroduce bases if necessary
                             if newBases:=self.bases.get(filename, {}).get(lineno):
                                 prevBases, newBases = self.callStack[-1]["bases"], newBases
@@ -310,9 +293,13 @@ class Tracer():
                                                 if (bno:=self.bases.get(filename, {}).get(no)) and bno[-1] == b1:
                                                     nline, nmultilines = self.advance(filename, no, 0)
                                                     self.write(filename, no, [nline, *nmultilines], old=no in self.lines[filename])
-
-                            # print current line
-                            self.write(filename, lineno, [line, *multilines], glob=newglob, loca=newloca)
+                            # global, local variables
+                            space = self.namespaces.setdefault(frame.f_globals["__name__"], {"glob": {}, "loca": {}})
+                            newglob, newloca = map(lambda x,y: {k:v for k,v in x.items() if k != "__builtins__" and (k not in space[y] or id(space[y][k]) != id(v))}, (frame.f_globals, frame.f_locals), ("glob", "loca"))
+                            space["glob"], space["loca"], newglob, newloca = map(lambda x: fine_dict(x), (frame.f_globals, frame.f_locals, newglob, newloca))
+                            newloca = {k:v for k,v in newloca.items() if id(v) != id(newglob.get(k))}
+                            
+                            self.write(filename, lineno, [line, *multilines], G=newglob, L=newloca)
 
 
         return self.trace_dispatch
